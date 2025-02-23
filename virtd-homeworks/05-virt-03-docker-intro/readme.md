@@ -82,13 +82,14 @@ Hey, Netology
 
 ![screenshot-2025-02-22-16-26-57.png](task2/screenshot-2025-02-22-16-26-57.png)
 
-На macOS нативно отсутствует команда ss. Сначала установим утилиту для использования команды ss
+На macOS нативно отсутствует команда ```ss```. Вместо неё задействуем команду со следующими опциями ```lsof -iTCP -sTCP:LISTEN -nP```
 
-![screenshot-2025-02-22-16-37-26.png](task2/screenshot-2025-02-22-16-37-26.png)
+По итогу строка видоизменится следующим образом: 
+```date +"%d-%m-%Y %T.%N %Z" ; sleep 0.150 ; docker ps ; lsof -iTCP -sTCP:LISTEN -nP | grep 8080  ; docker logs custom-nginx-t2 -n1 ; docker exec -it custom-nginx-t2 base64 /usr/share/nginx/html/index.html```
 
-Затем можно запустить снова контейнер, выполнить команду, и проверить работу веб-страницы
+Результат будет таков:
 
-![screenshot-2025-02-22-16-37-01.png](task2/screenshot-2025-02-22-16-37-01.png)
+![screenshot-2025-02-23-20-23-02.png](task2/screenshot-2025-02-23-20-23-02.png)
 
 ## Задача 3
 1. Воспользуйтесь docker help или google, чтобы узнать как подключиться к стандартному потоку ввода/вывода/ошибок контейнера "custom-nginx-t2".
