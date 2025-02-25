@@ -1,0 +1,10 @@
+include:
+  - docker-compose.yaml
+
+services:
+  portainer:
+    ports:
+      - "9000:9000"
+    image: portainer/portainer-ce:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

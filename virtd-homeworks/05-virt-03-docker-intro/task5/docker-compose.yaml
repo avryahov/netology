@@ -1,0 +1,6 @@
+services:
+  registry:
+    image: registry:2
+
+    ports:
+      - "5050:5000"
