@@ -80,6 +80,24 @@
 
 ### Ответ
 
+Создан хаб на стороне облака Яндекса для контейнеров. Настроена аутентификация локального docker в yandex container registry
+
+![screenshot-2025-02-27-17-09-21.png](task2/screenshot-2025-02-27-17-09-21.png)
+
+Собран образ проекта с помощью команды  ```docker build -t shvirtd-example-python -f Dockerfile.python . ``` 
+Добавлен базовый тег ```latest``` по умолчанию и запушен в хаб Яндекса
+
+![screenshot-2025-02-27-16-59-58.png](task2/screenshot-2025-02-27-16-59-58.png)
+
+![screenshot-2025-02-27-16-51-52.png](task2/screenshot-2025-02-27-16-51-52.png)
+
+Проведено сканирование уязвимостей образа
+
+![screenshot-2025-02-27-16-53-09.png](task2/screenshot-2025-02-27-16-53-09.png)
+
+![screenshot-2025-02-27-16-53-28.png](task2/screenshot-2025-02-27-16-53-28.png)
+
+Приложен отчет в текущий проект [vulnerabilities.csv](task2/vulnerabilities.csv)
 
 ## Задача 3
 1. Изучите файл "proxy.yaml"
