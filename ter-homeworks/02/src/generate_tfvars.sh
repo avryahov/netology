@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Получение cloud_id
+# Получение token
 TOKEN=$(yc config get token)
 
-# Получение cloud_id
+# Получение organization_id
 ORGANIZATION_ID=$(yc organization-manager organization list --format json | jq -r '.[].id')
 
 # Получение cloud_id
