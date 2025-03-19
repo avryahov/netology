@@ -51,12 +51,12 @@ resource "local_file" "authorized_key" {
 }
 
 data "yandex_compute_image" "ubuntu" {
-  family = "ubuntu-2004-lts"
+  family = var.vm_web_family
 }
 
 resource "yandex_compute_instance" "platform" {
-  name        = "netology-develop-platform-web"
-  platform_id = "standard-v1"
+  name        = var.vm_web_name
+  platform_id = var.vm_web_platform_id
   resources {
     cores         = 2
     memory        = 1
@@ -78,6 +78,6 @@ resource "yandex_compute_instance" "platform" {
   metadata = {
     serial-port-enable = 1
     ssh-keys           = "ubuntu:${var.vms_ssh_root_key}"
-    enable-oslogin    = "true"
+    enable-oslogin     = "true"
   }
 }
