@@ -33,6 +33,11 @@ variable "default_cidr" {
   default = ["10.0.1.0/24"]
   description = "https://cloud.yandex.ru/docs/vpc/operations/subnet-create"
 }
+variable "db_cidr" {
+  type = list(string)
+  default = ["10.0.4.0/24", "10.0.100.0/24"]
+  description = "https://cloud.yandex.ru/docs/vpc/operations/subnet-create"
+}
 
 variable "vpc_name" {
   type        = string
@@ -43,6 +48,12 @@ variable "vpc_name" {
 variable "vpc_subnet_name" {
   type        = string
   default     = "develop-subnet-1"
+  description = "VPC network & subnet name"
+}
+
+variable "vpc_subnet_db_name" {
+  type        = string
+  default     = "develop-subnet-db-1"
   description = "VPC network & subnet name"
 }
 
