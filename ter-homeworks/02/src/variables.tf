@@ -56,7 +56,6 @@ variable "service_account_name" {
 
 variable "vms_ssh_root_key" {
   type        = string
-  default     = "~/.ssh/yandex_avryahov.pub"
   description = "ssh-keygen -t ed25519"
   sensitive   = true
 }
