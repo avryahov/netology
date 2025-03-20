@@ -16,7 +16,7 @@ FOLDER_ID=$(yc config get folder-id)
 SSH_KEY=$(cat "$HOME"/.ssh/id_ed25519.pub)
 
 # Запись значений в файл terraform.tfvars
-cat <<EOF > terraform.tfvars
+cat <<EOF > personal.auto.tfvars
 token = "$TOKEN"
 organization_id = "$ORGANIZATION_ID"
 cloud_id  = "$CLOUD_ID"

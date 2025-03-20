@@ -17,23 +17,23 @@ variable "vm_web_platform_id" {
   default     = "standard-v1"
 }
 
-variable "vm_web_resources_cores" {
-  description = "The cores value of the yandex compute instance resources"
-  type        = number
-  default     = 2
-}
-
-variable "vm_web_resources_memory" {
-  description = "The memory value of the yandex compute instance resources"
-  type        = number
-  default     = 1
-}
-
-variable "vm_web_resources_core_fraction" {
-  description = "The core fraction value of the yandex compute instance resources"
-  type        = number
-  default     = 5
-}
+# variable "vm_web_resources_cores" {
+#   description = "The cores value of the yandex compute instance resources"
+#   type        = number
+#   default     = 2
+# }
+#
+# variable "vm_web_resources_memory" {
+#   description = "The memory value of the yandex compute instance resources"
+#   type        = number
+#   default     = 1
+# }
+#
+# variable "vm_web_resources_core_fraction" {
+#   description = "The core fraction value of the yandex compute instance resources"
+#   type        = number
+#   default     = 5
+# }
 
 variable "vm_web_scheduling_policy_preemptible" {
   description = "The preemptible flag of the yandex compute instance scheduling policy"
@@ -84,23 +84,23 @@ variable "vm_db_zone" {
   default     = "ru-central1-b"
 }
 
-variable "vm_db_resources_cores" {
-  description = "The cores value of the yandex compute instance resources"
-  type        = number
-  default     = 2
-}
-
-variable "vm_db_resources_memory" {
-  description = "The memory value of the yandex compute instance resources"
-  type        = number
-  default     = 2
-}
-
-variable "vm_db_resources_core_fraction" {
-  description = "The core fraction value of the yandex compute instance resources"
-  type        = number
-  default     = 20
-}
+# variable "vm_db_resources_cores" {
+#   description = "The cores value of the yandex compute instance resources"
+#   type        = number
+#   default     = 2
+# }
+#
+# variable "vm_db_resources_memory" {
+#   description = "The memory value of the yandex compute instance resources"
+#   type        = number
+#   default     = 2
+# }
+#
+# variable "vm_db_resources_core_fraction" {
+#   description = "The core fraction value of the yandex compute instance resources"
+#   type        = number
+#   default     = 20
+# }
 
 variable "vm_db_scheduling_policy_preemptible" {
   description = "The preemptible flag of the yandex compute instance scheduling policy"
@@ -132,4 +132,21 @@ variable "vms_ssh_root_key" {
   type        = string
   description = "ssh-keygen -t ed25519"
   sensitive   = true
+}
+
+variable "vms_resources" {
+  description = "Конфигурация ресурсов для каждой ВМ"
+  type = map(object({
+    cores         = number
+    memory        = number
+    core_fraction = number
+  }))
+}
+
+variable "vms_metadata" {
+  description = "Конфигурация метаданных для каждой ВМ"
+  type = object({
+    serial-port-enable = number
+    enable-oslogin     = string
+  })
 }
