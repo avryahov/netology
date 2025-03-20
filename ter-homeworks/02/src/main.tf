@@ -82,11 +82,7 @@ resource "yandex_compute_instance" "platform" {
     nat       = var.vm_web_network_interface_nat
   }
 
-  metadata = {
-    serial-port-enable = var.vms_metadata.serial-port-enable
-    ssh-keys           = "ubuntu:${var.vms_ssh_root_key}"
-    enable-oslogin     = var.vms_metadata.enable-oslogin
-  }
+  metadata = local.combined_metadata
 }
 
 data "yandex_compute_image" "ubuntu_db" {
@@ -115,9 +111,5 @@ resource "yandex_compute_instance" "platform_db" {
     nat       = var.vm_db_network_interface_nat
   }
 
-  metadata = {
-    serial-port-enable = var.vms_metadata.serial-port-enable
-    ssh-keys           = "ubuntu:${var.vms_ssh_root_key}"
-    enable-oslogin     = var.vms_metadata.enable-oslogin
-  }
+  metadata = local.combined_metadata
 }
