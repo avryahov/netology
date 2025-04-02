@@ -40,6 +40,13 @@
 
 ![screenshot-2025-04-02-19-13-37.png](screens/screenshot-2025-04-02-19-13-37.png)
 
+3. С помощью команды ```docker run --name deb -d ubuntu bash -c "apt-get update && apt-get install -y python3 && while true; do sleep 3600; done"``` подготовили рабочее окружение для **dev** и **el** стендов c предварительной установкой Python
+
+![screenshot-2025-04-02-19-41-42.png](screens/screenshot-2025-04-02-19-41-42.png)
+
+4. С помощью команды ```ansible-playbook -i inventory/prod.yml site.yml``` запустили **playbook** докер-контейнеров **inventory** _прода_
+
+![screenshot-2025-04-02-19-42-12.png](screens/screenshot-2025-04-02-19-42-12.png)
 
 ## Необязательная часть
 
