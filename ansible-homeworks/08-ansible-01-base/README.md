@@ -48,9 +48,15 @@
 
 ![screenshot-2025-04-02-19-42-12.png](screens/screenshot-2025-04-02-19-42-12.png)
 
-5. Поменяли значения переменных, и повторно запустили **playbook** 
+5. Поменяли значения переменных, и повторно (6) запустили **playbook** 
 
 ![screenshot-2025-04-02-22-44-36.png](screens/screenshot-2025-04-02-22-44-36.png)
+
+7. Зашифровали с помощью команды ```ansible-vault encrypt group_vars/deb/examp.yml```
+
+![screenshot-2025-04-02-22-49-53.png](screens/screenshot-2025-04-02-22-49-53.png)
+
+![screenshot-2025-04-02-22-53-13.png](screens/screenshot-2025-04-02-22-53-13.png)
 
 ## Необязательная часть
 
