@@ -34,6 +34,13 @@
 
 1. С помощью команды ```ansible-playbook -i inventory/test.yml site.yml``` запустили **playbook** на базе данных тестового **inventory**
 
+![screenshot-2025-04-02-19-09-11.png](screens/screenshot-2025-04-02-19-09-11.png)
+
+2. Поменяли значение переменной, и заново запустили
+
+![screenshot-2025-04-02-19-13-37.png](screens/screenshot-2025-04-02-19-13-37.png)
+
+
 ## Необязательная часть
 
 1. При помощи `ansible-vault` расшифруйте все зашифрованные файлы с переменными.
