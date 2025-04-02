@@ -58,6 +58,10 @@
 
 ![screenshot-2025-04-02-22-53-13.png](screens/screenshot-2025-04-02-22-53-13.png)
 
+8. С помощью команды ```ansible-playbook -i inventory/prod.yml site.yml --ask-vault-pass``` запустили **playbook**
+
+![screenshot-2025-04-02-22-56-48.png](screens/screenshot-2025-04-02-22-56-48.png)
+
 ## Необязательная часть
 
 1. При помощи `ansible-vault` расшифруйте все зашифрованные файлы с переменными.
