@@ -7,7 +7,7 @@
       ansible.builtin.service:
         name: clickhouse-server
         state: restarted
-        enabled: yes
+        enabled: true
 
   tasks:
     # Проверка архитектуры системы
@@ -25,29 +25,42 @@
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+        mode: '0644'
       when: "'aarch64' in arch_check.stdout or 'arm64' in arch_check.stdout"
 
     # Очистка кэша APT
     - name: Clean APT cache
       ansible.builtin.command: >
         bash -c "apt-get clean && rm -rf /var/lib/apt/lists/*"
+      changed_when: false
 
     # Обновление кэша APT
     - name: Update apt cache
       ansible.builtin.apt:
-        update_cache: yes
+        update_cache: true
 
     # Скачивание DEB-пакетов
-    - block:
-        - name: Get clickhouse distrib
+    - name: Handle Clickhouse package downloads
+      block:
+        - name: Download Clickhouse packages
           ansible.builtin.get_url:
-            url: "https://packages.clickhouse.com/deb/pool/main/c/clickhouse/{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
+            url: >
+              https://packages.clickhouse.com/deb/pool/main/c/clickhouse/
+              {{ item }}_{{ clickhouse_version }}_
+              {{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb
             dest: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
+            mode: '0644'
           with_items: "{{ clickhouse_packages }}"
       rescue:
-        - name: Fallback for missing packages
-          fail:
+        - name: Fail on missing packages
+          ansible.builtin.fail:
             msg: "Failed to download one or more ClickHouse packages. Please check the version and URLs."
+      always:
+        - name: Always clean up temporary files
+          ansible.builtin.file:
+            path: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
+            state: absent
+          with_items: "{{ clickhouse_packages }}"
 
     # Установка DEB-пакетов
     - name: Install clickhouse-common-static first
@@ -67,10 +80,11 @@
     - name: Fix broken dependencies
       ansible.builtin.command: >
         bash -c "apt-get install -f -y"
+      changed_when: false
 
     # Применяем изменения (запускаем обработчики)
     - name: Flush handlers
-      meta: flush_handlers
+      ansible.builtin.meta: flush_handlers
 
     # Создаем базу данных
     - name: Create database
@@ -87,7 +101,7 @@
       ansible.builtin.service:
         name: vector
         state: restarted
-        enabled: yes
+        enabled: true
 
   tasks:
     # Проверка архитектуры системы
@@ -106,7 +120,8 @@
     # Скачивание дистрибутива Vector
     - name: Download Vector distribution
       ansible.builtin.get_url:
-        url: "https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musl.tar.gz"
+        url: >
+          https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musl.tar.gz
         dest: /tmp/vector-{{ vector_version }}.tar.gz
         mode: '0644'
 
@@ -115,7 +130,7 @@
       ansible.builtin.unarchive:
         src: /tmp/vector-{{ vector_version }}.tar.gz
         dest: /opt/vector
-        remote_src: yes
+        remote_src: true
 
     # Создание символической ссылки
     - name: Create symbolic link for easier access
@@ -127,7 +142,7 @@
     # Деплой конфигурации через шаблон
     - name: Deploy Vector configuration using Jinja2 template
       ansible.builtin.template:
-        src: ../templates/vector_config.j2
+        src: "{{ playbook_dir }}/templates/vector_config.j2"
         dest: /etc/vector/vector.toml
         owner: root
         group: root
@@ -138,6 +153,6 @@
     - name: Ensure Vector service is enabled and started
       ansible.builtin.systemd:
         name: vector
-        enabled: yes
+        enabled: true
         state: started
-        daemon_reload: yes
+        daemon_reload: true
