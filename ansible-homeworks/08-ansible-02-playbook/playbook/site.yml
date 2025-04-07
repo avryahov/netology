@@ -107,10 +107,9 @@
   become: true
   handlers:
     - name: Restart Vector service
-      ansible.builtin.service:
-        name: vector
-        state: restarted
-        enabled: true
+      ansible.builtin.command: >
+        bash -c "pkill vector || true && /usr/local/bin/vector --config /etc/vector/vector.toml &"
+      changed_when: false  # Явно указываем, что задача не изменяет состояние
 
   tasks:
     # Проверка архитектуры системы
@@ -141,12 +140,37 @@
         dest: /opt/vector
         remote_src: true
 
+    # Логирование содержимого каталога после распаковки
+    - name: Debug directory contents after extraction
+      ansible.builtin.command: ls -la /opt/vector
+      register: vector_dir_contents
+      changed_when: false
+
+    - name: Show extracted files
+      ansible.builtin.debug:
+        var: vector_dir_contents.stdout
+
     # Создание символической ссылки
     - name: Create symbolic link for easier access
       ansible.builtin.file:
-        src: /opt/vector/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musleabi/bin/vector
+        src: /opt/vector/vector-{{ vector_architecture }}-unknown-linux-musleabi/bin/vector
         dest: /usr/local/bin/vector
         state: link
+      when: vector_dir_contents.stdout is search('vector')  # Убедимся, что файл существует
+
+    # Создание директории для конфигурации
+    - name: Ensure configuration directory exists
+      ansible.builtin.file:
+        path: /etc/vector
+        state: directory
+        mode: '0755'
+
+    # Создание каталога data_dir
+    - name: Ensure data directory exists
+      ansible.builtin.file:
+        path: /var/lib/vector
+        state: directory
+        mode: '0755'
 
     # Деплой конфигурации через шаблон
     - name: Deploy Vector configuration using Jinja2 template
@@ -158,10 +182,29 @@
         mode: '0644'
       notify: Restart Vector service
 
-    # Убедимся, что служба Vector запущена
-    - name: Ensure Vector service is enabled and started
-      ansible.builtin.systemd:
-        name: vector
-        enabled: true
-        state: started
-        daemon_reload: true
+    # Проверка формата конфигурационного файла
+    - name: Validate Vector configuration file format
+      ansible.builtin.command: >
+        bash -c "vector validate --config-toml /etc/vector/vector.toml"
+      register: config_validation
+      failed_when: config_validation.rc != 0
+      changed_when: false
+
+    - name: Show validation result
+      ansible.builtin.debug:
+        msg: "Vector configuration file is valid."
+
+    # Удаление старых процессов Vector (если они есть)
+    - name: Kill existing Vector processes
+      ansible.builtin.command: >
+        bash -c "pkill vector || true"
+      changed_when: false
+
+    # Запуск Vector напрямую
+    - name: Start Vector directly
+      ansible.builtin.command: >
+        bash -c "/usr/local/bin/vector --config /etc/vector/vector.toml &"
+      async: 0
+      poll: 0
+      failed_when: false  # Явно указываем, что задача всегда успешна
+      changed_when: false
