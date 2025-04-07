@@ -1,0 +1,16 @@
+---
+- name: Build Docker image with decrypted password
+  hosts: localhost
+  vars_files:
+    - ../../group_vars/all/vars.yml  # Общий пароль
+  tasks:
+    - name: Debug decrypted password
+      debug:
+        msg: "Decrypted password is {{ common_password }}"
+    - name: Build Docker image
+      command: >
+        docker build
+        --build-arg ROOT_PASSWORD="{{ common_password }}"
+        -t vector-host .
+      args:
+        chdir: ./

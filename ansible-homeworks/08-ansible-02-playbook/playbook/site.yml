@@ -119,11 +119,6 @@
       register: arch_check
       changed_when: false
 
-    # Установка факта для архитектуры Vector
-    - name: Set Vector architecture fact
-      ansible.builtin.set_fact:
-        vector_architecture: "arm"
-
     # Создание директории для установки
     - name: Ensure installation directory exists
       ansible.builtin.file:
