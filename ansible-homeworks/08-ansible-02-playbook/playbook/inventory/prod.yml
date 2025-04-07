@@ -5,7 +5,7 @@ all:
       hosts:
         clickhouse-01:
           ansible_host: localhost
-          ansible_port: 2222
+          ansible_port: 2222  # Порт SSH для ClickHouse
           ansible_user: root
           ansible_password: "{{ common_password }}"
           ansible_connection: ssh
@@ -15,7 +15,7 @@ all:
       hosts:
         vector-01:
           ansible_host: localhost
-          ansible_port: 2223  # Новый порт для Vector
+          ansible_port: 2223  # Порт SSH для Vector
           ansible_user: root
           ansible_password: "{{ common_password }}"
           ansible_connection: ssh

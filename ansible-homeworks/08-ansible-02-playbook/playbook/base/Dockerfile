@@ -6,7 +6,7 @@ ARG ROOT_PASSWORD
 
 # Обновление пакетов и установка необходимых зависимостей
 RUN apt-get update && \
-    apt-get install -y openssh-server python3 sudo && \
+    apt-get install -y openssh-server python3 sudo wget curl && \
     apt-get clean
 
 # Настройка SSH
@@ -19,7 +19,7 @@ RUN mkdir /var/run/sshd && \
 RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
 
 # Порт SSH
-EXPOSE 2222
+EXPOSE 22
 
 # Запуск SSH-сервера
 CMD ["/usr/sbin/sshd", "-D"]

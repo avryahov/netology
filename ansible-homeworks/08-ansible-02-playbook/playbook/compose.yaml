@@ -1,0 +1,30 @@
+services:
+  clickhouse-01:
+    image: clickhouse-host:latest
+    container_name: clickhouse-01
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+      - "2222:22"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    networks:
+      - app-network
+
+  vector-01:
+    image: vector-host:latest
+    container_name: vector-01
+    ports:
+      - "8686:8686"
+      - "2223:22"
+    depends_on:
+      - clickhouse-01
+    networks:
+      - app-network
+
+volumes:
+  clickhouse-data:
+
+networks:
+  app-network:
+    driver: bridge

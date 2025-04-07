@@ -1,14 +1,31 @@
 ---
-vector_version: "0.45.0"
-vector_architecture: "arm"
 vector_data_dir: "/var/lib/vector"
-vector_encoding_codec: "json"
+
 vector_sources:
+  http_input:
+    type: "http_server"
+    address: "0.0.0.0:8686"
+    encoding:
+      codec: "json"
   internal_metrics:
     type: "internal_metrics"
+
 vector_sinks:
   console:
     type: "console"
-    inputs: ["internal_metrics"]
+    inputs:
+      - "http_input"
+      - "internal_metrics"
     encoding:
-      codec: "{{ vector_encoding_codec }}"
+      codec: "json"
+  clickhouse_output:
+    type: "clickhouse"
+    inputs:
+      - "http_input"
+    endpoint: "http://clickhouse-01:8123"
+    database: "logs"
+    table: "vector"
+    compression: "gzip"
+
+vector_version: "0.45.0"
+vector_architecture: "arm"

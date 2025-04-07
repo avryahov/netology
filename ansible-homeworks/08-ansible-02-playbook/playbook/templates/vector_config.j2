@@ -1,10 +1,15 @@
 # Default Vector configuration
 data_dir = "{{ vector_data_dir }}"
 
-[sources.internal_metrics]
-type = "{{ vector_sources.internal_metrics.type }}"
+[sources.http_input]
+  type = "http_server"
+  address = "{{ vector_sources.http_input.address }}"
+  encoding.codec = "{{ vector_sources.http_input.encoding.codec }}"
 
-[sinks.console]
-type = "{{ vector_sinks.console.type }}"
-inputs = {{ vector_sinks.console.inputs | to_json }}
-encoding.codec = "{{ vector_sinks.console.encoding.codec }}"
+[sinks.clickhouse_output]
+  type = "{{ vector_sinks.clickhouse_output.type }}"
+  inputs = {{ vector_sinks.clickhouse_output.inputs | to_json }}
+  endpoint = "{{ vector_sinks.clickhouse_output.endpoint }}"
+  database = "{{ vector_sinks.clickhouse_output.database }}"
+  table = "{{ vector_sinks.clickhouse_output.table }}"
+  compression = "{{ vector_sinks.clickhouse_output.compression }}"

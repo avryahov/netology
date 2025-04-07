@@ -1,178 +1,94 @@
 ---
-- name: Install Clickhouse
-  hosts: clickhouse
+- name: Install ClickHouse and Vector
+  hosts: all
   become: true
-  handlers:
-    - name: Start clickhouse service
+  tasks:
+    # ========================
+    # Установка ClickHouse
+    # ========================
+    - name: Install ClickHouse dependencies
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+        state: present
+        update_cache: yes
+      when: "'clickhouse' in group_names"
+
+    - name: Add ClickHouse repository key
+      ansible.builtin.apt_key:
+        url: https://repo.clickhouse.com/CLICKHOUSE-GPG-KEY
+        state: present
+      when: "'clickhouse' in group_names"
+
+    - name: Add ClickHouse repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://repo.clickhouse.com/deb/stable/main/ any main"
+        state: present
+      when: "'clickhouse' in group_names"
+
+    - name: Install ClickHouse packages
+      ansible.builtin.apt:
+        name:
+          - clickhouse-server
+          - clickhouse-client
+        state: present
+      when: "'clickhouse' in group_names"
+
+    - name: Start ClickHouse service
       ansible.builtin.service:
         name: clickhouse-server
-        state: restarted
+        state: started
         enabled: true
+      when: "'clickhouse' in group_names"
 
-  tasks:
-    # Проверка архитектуры системы
-    - name: Check system architecture
-      ansible.builtin.command: uname -m
-      register: arch_check
-      changed_when: false
-
-    # Исправление репозиториев для arm64
-    - name: Fix sources.list for arm64
-      ansible.builtin.copy:
-        dest: /etc/apt/sources.list
-        content: |
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
-        mode: '0644'
-      when: clickhouse_architecture == "arm64"
-
-    # Очистка кэша APT
-    - name: Clean APT cache
-      ansible.builtin.command: >
-        bash -c "apt-get clean && rm -rf /var/lib/apt/lists/*"
-      changed_when: false
-
-    # Обновление кэша APT
-    - name: Update apt cache
-      ansible.builtin.apt:
-        update_cache: true
-
-    - name: Handle Clickhouse package downloads and installation
-      block:
-        - name: Download Clickhouse packages
-          ansible.builtin.get_url:
-            url: https://packages.clickhouse.com/deb/pool/main/c/clickhouse/{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb
-            dest: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
-            mode: '0644'
-          with_items: "{{ clickhouse_packages }}"
-
-        - name: Check if DEB package exists
-          ansible.builtin.stat:
-            path: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
-          register: deb_file_stat
-          with_items: "{{ clickhouse_packages }}"
-
-        - name: Fail if DEB package is missing
-          ansible.builtin.fail:
-            msg: "DEB package not found: ./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
-          when: not item.stat.exists
-          with_items: "{{ deb_file_stat.results }}"
-
-        - name: Debug DEB files
-          ansible.builtin.debug:
-            msg: "Found DEB file: {{ item }}"
-          with_items: "{{ clickhouse_packages }}"
-
-        - name: Install clickhouse-common-static first
-          ansible.builtin.apt:
-            deb: "./clickhouse-common-static_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
-          notify: Start clickhouse service
-
-        - name: Install remaining clickhouse packages
-          ansible.builtin.apt:
-            deb: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
-          with_items:
-            - clickhouse-client
-            - clickhouse-server
-          notify: Start clickhouse service
-
-      always:
-        - name: Clean up temporary files
-          ansible.builtin.file:
-            path: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
-            state: absent
-          with_items: "{{ clickhouse_packages }}"
-
-    # Исправление зависимостей
-    - name: Fix broken dependencies
-      ansible.builtin.command: >
-        bash -c "apt-get install -f -y"
-      changed_when: false
-
-    # Применяем изменения (запускаем обработчики)
-    - name: Flush handlers
-      ansible.builtin.meta: flush_handlers
-
-    # Создаем базу данных
     - name: Create database
       ansible.builtin.command: "clickhouse-client -q 'CREATE DATABASE IF NOT EXISTS logs;'"
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc != 82
       changed_when: create_db.rc == 0
+      when: "'clickhouse' in group_names"
 
-- name: Install Vector
-  hosts: vector
-  become: true
-  handlers:
-    - name: Restart Vector service
-      ansible.builtin.command: >
-        bash -c "pkill vector || true && /usr/local/bin/vector --config /etc/vector/vector.toml &"
-      changed_when: false  # Явно указываем, что задача не изменяет состояние
-
-  tasks:
-    # Проверка архитектуры системы
-    - name: Check system architecture
-      ansible.builtin.command: uname -m
-      register: arch_check
-      changed_when: false
-
-    # Создание директории для установки
+    # ========================
+    # Установка Vector
+    # ========================
     - name: Ensure installation directory exists
       ansible.builtin.file:
         path: /opt/vector
         state: directory
         mode: '0755'
+      when: "'vector' in group_names"
 
-    # Скачивание дистрибутива Vector
     - name: Download Vector distribution
       ansible.builtin.get_url:
         url: >
           https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musleabi.tar.gz
         dest: /tmp/vector-{{ vector_version }}.tar.gz
         mode: '0644'
+      when: "'vector' in group_names"
 
-    # Распаковка дистрибутива
     - name: Extract Vector distribution
       ansible.builtin.unarchive:
         src: /tmp/vector-{{ vector_version }}.tar.gz
         dest: /opt/vector
         remote_src: true
+      when: "'vector' in group_names"
 
-    # Логирование содержимого каталога после распаковки
-    - name: Debug directory contents after extraction
-      ansible.builtin.command: ls -la /opt/vector
-      register: vector_dir_contents
-      changed_when: false
-
-    - name: Show extracted files
-      ansible.builtin.debug:
-        var: vector_dir_contents.stdout
-
-    # Создание символической ссылки
     - name: Create symbolic link for easier access
       ansible.builtin.file:
         src: /opt/vector/vector-{{ vector_architecture }}-unknown-linux-musleabi/bin/vector
         dest: /usr/local/bin/vector
         state: link
-      when: vector_dir_contents.stdout is search('vector')  # Убедимся, что файл существует
+      when: "'vector' in group_names"
 
-    # Создание директории для конфигурации
     - name: Ensure configuration directory exists
       ansible.builtin.file:
         path: /etc/vector
         state: directory
         mode: '0755'
+      when: "'vector' in group_names"
 
-    # Создание каталога data_dir
-    - name: Ensure data directory exists
-      ansible.builtin.file:
-        path: /var/lib/vector
-        state: directory
-        mode: '0755'
-
-    # Деплой конфигурации через шаблон
     - name: Deploy Vector configuration using Jinja2 template
       ansible.builtin.template:
         src: "{{ playbook_dir }}/templates/vector_config.j2"
@@ -181,30 +97,33 @@
         group: root
         mode: '0644'
       notify: Restart Vector service
+      when: "'vector' in group_names"
 
-    # Проверка формата конфигурационного файла
     - name: Validate Vector configuration file format
       ansible.builtin.command: >
         bash -c "vector validate --config-toml /etc/vector/vector.toml"
       register: config_validation
       failed_when: config_validation.rc != 0
       changed_when: false
+      when: "'vector' in group_names"
 
-    - name: Show validation result
-      ansible.builtin.debug:
-        msg: "Vector configuration file is valid."
-
-    # Удаление старых процессов Vector (если они есть)
     - name: Kill existing Vector processes
       ansible.builtin.command: >
         bash -c "pkill vector || true"
       changed_when: false
+      when: "'vector' in group_names"
 
-    # Запуск Vector напрямую
     - name: Start Vector directly
       ansible.builtin.command: >
         bash -c "/usr/local/bin/vector --config /etc/vector/vector.toml &"
       async: 0
       poll: 0
-      failed_when: false  # Явно указываем, что задача всегда успешна
+      failed_when: false
+      changed_when: false
+      when: "'vector' in group_names"
+
+  handlers:
+    - name: Restart Vector service
+      ansible.builtin.command: >
+        bash -c "pkill vector || true && /usr/local/bin/vector --config /etc/vector/vector.toml &"
       changed_when: false
