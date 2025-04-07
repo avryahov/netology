@@ -1,5 +1,6 @@
 ---
 clickhouse_version: "24.8.12.28"
+clickhouse_architecture: "arm64"
 clickhouse_packages:
   - clickhouse-client
   - clickhouse-server

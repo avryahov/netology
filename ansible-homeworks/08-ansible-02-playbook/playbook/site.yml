@@ -26,7 +26,7 @@
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
         mode: '0644'
-      when: "'aarch64' in arch_check.stdout or 'arm64' in arch_check.stdout"
+      when: clickhouse_architecture == "arm64"
 
     # Очистка кэша APT
     - name: Clean APT cache
@@ -39,42 +39,51 @@
       ansible.builtin.apt:
         update_cache: true
 
-    # Скачивание DEB-пакетов
-    - name: Handle Clickhouse package downloads
+    - name: Handle Clickhouse package downloads and installation
       block:
         - name: Download Clickhouse packages
           ansible.builtin.get_url:
-            url: >
-              https://packages.clickhouse.com/deb/pool/main/c/clickhouse/
-              {{ item }}_{{ clickhouse_version }}_
-              {{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb
-            dest: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
+            url: https://packages.clickhouse.com/deb/pool/main/c/clickhouse/{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb
+            dest: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
             mode: '0644'
           with_items: "{{ clickhouse_packages }}"
-      rescue:
-        - name: Fail on missing packages
-          ansible.builtin.fail:
-            msg: "Failed to download one or more ClickHouse packages. Please check the version and URLs."
-      always:
-        - name: Always clean up temporary files
-          ansible.builtin.file:
-            path: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
-            state: absent
+
+        - name: Check if DEB package exists
+          ansible.builtin.stat:
+            path: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+          register: deb_file_stat
           with_items: "{{ clickhouse_packages }}"
 
-    # Установка DEB-пакетов
-    - name: Install clickhouse-common-static first
-      ansible.builtin.apt:
-        deb: "./clickhouse-common-static_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
-      notify: Start clickhouse service
+        - name: Fail if DEB package is missing
+          ansible.builtin.fail:
+            msg: "DEB package not found: ./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+          when: not item.stat.exists
+          with_items: "{{ deb_file_stat.results }}"
 
-    - name: Install remaining clickhouse packages
-      ansible.builtin.apt:
-        deb: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
-      with_items:
-        - clickhouse-client
-        - clickhouse-server
-      notify: Start clickhouse service
+        - name: Debug DEB files
+          ansible.builtin.debug:
+            msg: "Found DEB file: {{ item }}"
+          with_items: "{{ clickhouse_packages }}"
+
+        - name: Install clickhouse-common-static first
+          ansible.builtin.apt:
+            deb: "./clickhouse-common-static_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+          notify: Start clickhouse service
+
+        - name: Install remaining clickhouse packages
+          ansible.builtin.apt:
+            deb: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+          with_items:
+            - clickhouse-client
+            - clickhouse-server
+          notify: Start clickhouse service
+
+      always:
+        - name: Clean up temporary files
+          ansible.builtin.file:
+            path: "./{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+            state: absent
+          with_items: "{{ clickhouse_packages }}"
 
     # Исправление зависимостей
     - name: Fix broken dependencies
@@ -110,6 +119,11 @@
       register: arch_check
       changed_when: false
 
+    # Установка факта для архитектуры Vector
+    - name: Set Vector architecture fact
+      ansible.builtin.set_fact:
+        vector_architecture: "arm"
+
     # Создание директории для установки
     - name: Ensure installation directory exists
       ansible.builtin.file:
@@ -121,7 +135,7 @@
     - name: Download Vector distribution
       ansible.builtin.get_url:
         url: >
-          https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musl.tar.gz
+          https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musleabi.tar.gz
         dest: /tmp/vector-{{ vector_version }}.tar.gz
         mode: '0644'
 
@@ -135,7 +149,7 @@
     # Создание символической ссылки
     - name: Create symbolic link for easier access
       ansible.builtin.file:
-        src: /opt/vector/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musl/bin/vector
+        src: /opt/vector/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musleabi/bin/vector
         dest: /usr/local/bin/vector
         state: link
 
