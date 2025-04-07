@@ -1,36 +1,80 @@
 ---
 - name: Install Clickhouse
   hosts: clickhouse
+  become: true
   handlers:
     - name: Start clickhouse service
-      become: true
       ansible.builtin.service:
         name: clickhouse-server
         state: restarted
+        enabled: yes
+
   tasks:
+    # Проверка архитектуры системы
+    - name: Check system architecture
+      ansible.builtin.command: uname -m
+      register: arch_check
+      changed_when: false
+
+    # Исправление репозиториев для arm64
+    - name: Fix sources.list for arm64
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list
+        content: |
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+      when: "'aarch64' in arch_check.stdout or 'arm64' in arch_check.stdout"
+
+    # Очистка кэша APT
+    - name: Clean APT cache
+      ansible.builtin.command: >
+        bash -c "apt-get clean && rm -rf /var/lib/apt/lists/*"
+
+    # Обновление кэша APT
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    # Скачивание DEB-пакетов
     - block:
         - name: Get clickhouse distrib
           ansible.builtin.get_url:
-            url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
-            dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+            url: "https://packages.clickhouse.com/deb/pool/main/c/clickhouse/{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
+            dest: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
           with_items: "{{ clickhouse_packages }}"
       rescue:
-        - name: Get clickhouse distrib
-          ansible.builtin.get_url:
-            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
-            dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
-    - name: Install clickhouse packages
-      become: true
-      ansible.builtin.yum:
-        name:
-          - clickhouse-common-static-{{ clickhouse_version }}.rpm
-          - clickhouse-client-{{ clickhouse_version }}.rpm
-          - clickhouse-server-{{ clickhouse_version }}.rpm
+        - name: Fallback for missing packages
+          fail:
+            msg: "Failed to download one or more ClickHouse packages. Please check the version and URLs."
+
+    # Установка DEB-пакетов
+    - name: Install clickhouse-common-static first
+      ansible.builtin.apt:
+        deb: "./clickhouse-common-static_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
       notify: Start clickhouse service
+
+    - name: Install remaining clickhouse packages
+      ansible.builtin.apt:
+        deb: "./{{ item }}_{{ clickhouse_version }}_{{ 'arm64' if 'aarch64' in arch_check.stdout else arch_check.stdout }}.deb"
+      with_items:
+        - clickhouse-client
+        - clickhouse-server
+      notify: Start clickhouse service
+
+    # Исправление зависимостей
+    - name: Fix broken dependencies
+      ansible.builtin.command: >
+        bash -c "apt-get install -f -y"
+
+    # Применяем изменения (запускаем обработчики)
     - name: Flush handlers
       meta: flush_handlers
+
+    # Создаем базу данных
     - name: Create database
-      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      ansible.builtin.command: "clickhouse-client -q 'CREATE DATABASE IF NOT EXISTS logs;'"
       register: create_db
-      failed_when: create_db.rc != 0 and create_db.rc !=82
+      failed_when: create_db.rc != 0 and create_db.rc != 82
       changed_when: create_db.rc == 0

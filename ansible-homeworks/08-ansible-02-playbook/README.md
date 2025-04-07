@@ -46,10 +46,84 @@ ansible-playbook playbook.yml --step
 
 ### Ответ
 
----
+1. Изменим **inventory** файл `prod.yml` так, что мы будем подключаться к **docker-контейнеру**
 
-### Как оформить решение задания
+![screenshot-2025-04-05-11-48-45.png](screens/screenshot-2025-04-05-11-48-45.png)
 
-Выполненное домашнее задание пришлите в виде ссылки на .md-файл в вашем репозитории.
+Перед работой проверим работоспособность и подготовить файл **playbook** для отладки и запуска **clickhouse** базы данных на **control-хосте** под управлением операционной системы **macOS** на базе _ARM-архитектуры_
+
+Сначала создадим пароль ```netology```, но зашифруем его с помощью команды
+
+```bash
+ansible-vault encrypt_string 'netology' --name 'common_password'
+```
+
+![screenshot-2025-04-05-13-09-56.png](screens/screenshot-2025-04-05-13-09-56.png)
+
+Далее сохраним зашифрованное значение в файле **фактов**
+
+![screenshot-2025-04-05-13-10-40.png](screens/screenshot-2025-04-05-13-10-40.png)
+
+Поменяем подключение с ```docker``` на ```ssh```
+
+![screenshot-2025-04-05-13-19-46.png](screens/screenshot-2025-04-05-13-19-46.png)
+
+Создал новый **docker-образ**, описанного в Dockerfile
+
+```docker
+# Базовый образ Ubuntu
+FROM ubuntu:22.04
+
+# Определение переменных
+ARG ROOT_PASSWORD
+
+# Обновление пакетов и установка необходимых зависимостей
+RUN apt-get update && \
+    apt-get install -y openssh-server python3 sudo && \
+    apt-get clean
+
+# Настройка SSH
+RUN mkdir /var/run/sshd && \
+    echo "root:${ROOT_PASSWORD}" | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Отключение DNS-проверки для ускорения подключения
+RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
+
+# Порт SSH
+EXPOSE 2222
+
+# Запуск SSH-сервера
+CMD ["/usr/sbin/sshd", "-D"]
+```
+
+C помощью команды поднял всё необходимое
+
+```bash
+ansible-playbook -i inventory/prod.yml build.yml --ask-vault-pass
+```
+
+![screenshot-2025-04-05-13-52-15.png](screens/screenshot-2025-04-05-13-52-15.png)
+
+После поднял образ в новом контейнере **clickhouse-01**, наименование которого совпадает с нашим **inventory**
+
+![screenshot-2025-04-05-14-29-26.png](screens/screenshot-2025-04-05-14-29-26.png)
+
+Далее изменил исходные данные фактов, а именно, помимо зашифрованного пароля, указал новую версию пакетов ```clickhouse_version: "24.8.12.28"```
+
+После этого с помощью команды запустил **playbook**
+
+```bash
+ansible-playbook -i inventory/prod.yml site.yml --ask-vault-pass
+```
+
+![screenshot-2025-04-05-15-07-29.png](screens/screenshot-2025-04-05-15-07-29.png)
+
+Проверил работоспособность БД, подключившись к контейнеру
+
+![screenshot-2025-04-05-15-15-33.png](screens/screenshot-2025-04-05-15-15-33.png)
+
+Playbook **site.yml** претерпел сильные изменения, так как на операционной системе **macOS** на базе **ARM**-чипов помимо актуальной версии пакетов ряд проблем собран был. Пришлось в сети интернет находить разные решения и описания
 
 ---

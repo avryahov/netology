@@ -1,0 +1,16 @@
+---
+- name: Build Docker image with decrypted password
+  hosts: localhost
+  vars_files:
+    - group_vars/clickhouse/vars.yml
+  tasks:
+    - name: Debug decrypted password
+      debug:
+        msg: "Decrypted password is {{ common_password }}"
+    - name: Build Docker image
+      command: >
+        docker build
+        --build-arg ROOT_PASSWORD="{{ common_password }}"
+        -t clickhouse-host .
+      args:
+        chdir: ../

@@ -2,4 +2,9 @@
 clickhouse:
   hosts:
     clickhouse-01:
-      ansible_host: <IP_here>
+      ansible_host: localhost
+      ansible_port: 2222
+      ansible_user: root
+      ansible_password: "{{ common_password }}"
+      ansible_connection: ssh
+      ansible_python_interpreter: /usr/bin/python3
