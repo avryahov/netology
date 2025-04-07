@@ -1,0 +1,10 @@
+# Default Vector configuration
+data_dir = "{{ vector_data_dir }}"
+
+[sources.internal_metrics]
+type = "{{ vector_sources.internal_metrics.type }}"
+
+[sinks.console]
+type = "{{ vector_sinks.console.type }}"
+inputs = {{ vector_sinks.console.inputs | to_json }}
+encoding.codec = "{{ vector_sinks.console.encoding.codec }}"

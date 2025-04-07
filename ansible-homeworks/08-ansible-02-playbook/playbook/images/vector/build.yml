@@ -1,0 +1,19 @@
+---
+- name: Build Docker image for Vector with decrypted password
+  hosts: localhost
+  vars_files:
+    - ../../group_vars/all/vars.yml  # Общий пароль
+    - ../../group_vars/vector/vars.yml  # Переменные для Vector
+  tasks:
+    - name: Debug decrypted password
+      debug:
+        msg: "Decrypted password is {{ common_password }}"
+
+    - name: Build Docker image for Vector
+      command: >
+        docker build
+        --build-arg ROOT_PASSWORD="{{ common_password }}"
+        --build-arg VECTOR_VERSION="{{ vector_version }}"
+        -t vector-host .
+      args:
+        chdir: ./

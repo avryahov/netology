@@ -78,3 +78,66 @@
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc != 82
       changed_when: create_db.rc == 0
+
+- name: Install Vector
+  hosts: vector
+  become: true
+  handlers:
+    - name: Restart Vector service
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+        enabled: yes
+
+  tasks:
+    # Проверка архитектуры системы
+    - name: Check system architecture
+      ansible.builtin.command: uname -m
+      register: arch_check
+      changed_when: false
+
+    # Создание директории для установки
+    - name: Ensure installation directory exists
+      ansible.builtin.file:
+        path: /opt/vector
+        state: directory
+        mode: '0755'
+
+    # Скачивание дистрибутива Vector
+    - name: Download Vector distribution
+      ansible.builtin.get_url:
+        url: "https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musl.tar.gz"
+        dest: /tmp/vector-{{ vector_version }}.tar.gz
+        mode: '0644'
+
+    # Распаковка дистрибутива
+    - name: Extract Vector distribution
+      ansible.builtin.unarchive:
+        src: /tmp/vector-{{ vector_version }}.tar.gz
+        dest: /opt/vector
+        remote_src: yes
+
+    # Создание символической ссылки
+    - name: Create symbolic link for easier access
+      ansible.builtin.file:
+        src: /opt/vector/vector-{{ vector_version }}-{{ vector_architecture }}-unknown-linux-musl/bin/vector
+        dest: /usr/local/bin/vector
+        state: link
+
+    # Деплой конфигурации через шаблон
+    - name: Deploy Vector configuration using Jinja2 template
+      ansible.builtin.template:
+        src: ../templates/vector_config.j2
+        dest: /etc/vector/vector.toml
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart Vector service
+
+    # Убедимся, что служба Vector запущена
+    - name: Ensure Vector service is enabled and started
+      ansible.builtin.systemd:
+        name: vector
+        enabled: yes
+        state: started
+        daemon_reload: yes

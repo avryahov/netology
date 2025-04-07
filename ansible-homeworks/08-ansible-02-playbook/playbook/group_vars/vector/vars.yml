@@ -1,0 +1,18 @@
+---
+vector_version: "0.32.1"
+vector_architecture: >
+  {{
+    'arm64' if 'arm64' in ansible_architecture or 'aarch64' in ansible_architecture
+    else ansible_architecture
+  }}
+vector_data_dir: "/var/lib/vector"
+vector_encoding_codec: "json"
+vector_sources:
+  internal_metrics:
+    type: "internal_metrics"
+vector_sinks:
+  console:
+    type: "console"
+    inputs: ["internal_metrics"]
+    encoding:
+      codec: "{{ vector_encoding_codec }}"

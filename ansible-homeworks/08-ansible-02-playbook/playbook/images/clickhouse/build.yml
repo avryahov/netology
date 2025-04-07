@@ -2,7 +2,7 @@
 - name: Build Docker image with decrypted password
   hosts: localhost
   vars_files:
-    - group_vars/clickhouse/vars.yml
+    - ../../group_vars/all/vars.yml  # Общий пароль
   tasks:
     - name: Debug decrypted password
       debug:
@@ -13,4 +13,4 @@
         --build-arg ROOT_PASSWORD="{{ common_password }}"
         -t clickhouse-host .
       args:
-        chdir: ../
+        chdir: ./
