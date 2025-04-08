@@ -1,12 +1,21 @@
 ---
+vector_version: "0.45.0"
+vector_architecture: "arm"
 vector_data_dir: "/var/lib/vector"
 
 vector_sources:
   http_input:
     type: "http_server"
     address: "0.0.0.0:8686"
-    encoding:
-      codec: "json"
+    encoding: "json"  # Простая строка для источника http_server
+    headers: ["User-Agent"]
+    host_key: "hostname"
+    method: "POST"
+    path: "/"
+    path_key: "path"
+    query_parameters: ["application"]
+    response_code: 200
+    strict_path: "true"
   internal_metrics:
     type: "internal_metrics"
 
@@ -17,7 +26,7 @@ vector_sinks:
       - "http_input"
       - "internal_metrics"
     encoding:
-      codec: "json"
+      codec: "json"  # Структура для выхода console
   clickhouse_output:
     type: "clickhouse"
     inputs:
@@ -26,6 +35,5 @@ vector_sinks:
     database: "logs"
     table: "vector"
     compression: "gzip"
-
-vector_version: "0.45.0"
-vector_architecture: "arm"
+    format: "json_each_row"
+    healthcheck: false

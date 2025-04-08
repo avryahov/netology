@@ -5,18 +5,15 @@ all:
       hosts:
         clickhouse-01:
           ansible_host: localhost
-          ansible_port: 2222  # Порт SSH для ClickHouse
-          ansible_user: root
-          ansible_password: "{{ common_password }}"
-          ansible_connection: ssh
-          ansible_python_interpreter: /usr/bin/python3
-
+          ansible_port: 2222
     vector:
       hosts:
         vector-01:
           ansible_host: localhost
-          ansible_port: 2223  # Порт SSH для Vector
-          ansible_user: root
-          ansible_password: "{{ common_password }}"
-          ansible_connection: ssh
-          ansible_python_interpreter: /usr/bin/python3
+          ansible_port: 2223
+  vars:
+    ansible_user: root
+    ansible_password: "{{ common_password }}"
+    ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"

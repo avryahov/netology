@@ -6,7 +6,7 @@ ARG ROOT_PASSWORD
 
 # Обновление пакетов и установка необходимых зависимостей
 RUN apt-get update && \
-    apt-get install -y openssh-server python3 sudo wget curl && \
+    apt-get install -y openssh-server python3 wget curl gnupg python3-apt && \
     apt-get clean
 
 # Настройка SSH
