@@ -1,4 +1,3 @@
----
 # Установка ClickHouse
 - name: Install ClickHouse
   hosts: clickhouse
@@ -39,8 +38,7 @@
       block:
         - name: Debug ClickHouse package URLs
           ansible.builtin.debug:
-            msg: "Downloading from: https://packages.clickhouse.com/deb/pool/main/c/clickhouse/
-            {{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+            msg: "Downloading from: https://packages.clickhouse.com/deb/pool/main/c/clickhouse/{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
           with_items: "{{ clickhouse_packages }}"
 
         - name: Download Clickhouse packages
@@ -94,39 +92,55 @@
     - name: Flush handlers
       ansible.builtin.meta: flush_handlers
 
-    # Обновление конфигурации ClickHouse без использования Jinja2
-    - name: Ensure http_port is set
+    # Обновление конфигурации ClickHouse
+    - name: Ensure <http_port>8123</http_port> exists
       lineinfile:
         path: /etc/clickhouse-server/config.xml
         regexp: '^\\s*<http_port>'
         line: '    <http_port>8123</http_port>'
-        insertafter: '<yandex>'
+        insertafter: '</http_options_response>'
+        create: yes
 
-    - name: Ensure tcp_port is set
+    - name: Ensure <tcp_port>9000</tcp_port> exists
       lineinfile:
         path: /etc/clickhouse-server/config.xml
         regexp: '^\\s*<tcp_port>'
         line: '    <tcp_port>9000</tcp_port>'
-        insertafter: '<yandex>'
+        insertafter: '</http_options_response>'
+        create: yes
 
     - name: Ensure listen_host for IPv4 is set
       lineinfile:
         path: /etc/clickhouse-server/config.xml
         regexp: '^\\s*<listen_host>0.0.0.0'
         line: '    <listen_host>0.0.0.0</listen_host>'
-        insertafter: '<yandex>'
-
-    - name: Ensure listen_host for IPv6 is set
-      lineinfile:
-        path: /etc/clickhouse-server/config.xml
-        regexp: '^\\s*<listen_host>::'
-        line: '    <listen_host>::</listen_host>'
-        insertafter: '<yandex>'
+        insertafter: '<interserver_http_port>'
+        create: yes
 
     - name: Restart ClickHouse service
       service:
         name: clickhouse-server
         state: restarted
+
+    # Дополнительно: логирование, если что-то пойдет не так
+    - name: Show ClickHouse logs (useful for debugging)
+      ansible.builtin.shell: tail -n 50 /var/log/clickhouse-server/clickhouse-server.log || true
+      register: ch_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Debug ClickHouse logs
+      ansible.builtin.debug:
+        var: ch_logs.stdout
+
+    # Ждём пока ClickHouse действительно станет доступен
+    - name: Wait for ClickHouse to become available via client
+      ansible.builtin.shell: "clickhouse-client -q 'SELECT 1'"
+      register: ch_ready
+      retries: 10
+      delay: 3
+      until: ch_ready.rc == 0
+      changed_when: false
 
     # Создаем базу данных
     - name: Create database
@@ -245,27 +259,3 @@
       ansible.builtin.command: >
         bash -c "vector validate --config-toml /etc/vector/vector.toml"
       register: config_validation
-      failed_when: config_validation.rc != 0
-      changed_when: false
-
-    - name: Show validation result
-      ansible.builtin.debug:
-        msg: "Vector configuration file is valid."
-
-    - name: Debug Vector configuration file
-      ansible.builtin.slurp:
-        path: /etc/vector/vector.toml
-      register: vector_config
-
-    - name: Show Vector configuration file contents
-      ansible.builtin.debug:
-        msg: "{{ vector_config.content | b64decode }}"
-
-    # Запуск Vector напрямую
-    - name: Start Vector directly
-      ansible.builtin.command: >
-        bash -c "/usr/local/bin/vector --config /etc/vector/vector.toml &"
-      async: 0
-      poll: 0
-      failed_when: false
-      changed_when: false
