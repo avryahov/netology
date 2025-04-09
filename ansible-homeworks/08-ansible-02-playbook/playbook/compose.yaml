@@ -1,4 +1,14 @@
 services:
+  nginx-01:
+    image: nginx
+    container_name: nginx-01
+    ports:
+      - "8080:80"
+    volumes:
+      - ./logs:/var/log/nginx
+    networks:
+      - app-network
+
   clickhouse-01:
     image: clickhouse-host:latest
     container_name: clickhouse-01
@@ -15,7 +25,6 @@ services:
     image: vector-host:latest
     container_name: vector-01
     ports:
-      - "8686:8686"
       - "2223:22"
     depends_on:
       - clickhouse-01

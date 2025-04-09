@@ -1,0 +1,19 @@
+  http {
+    include       {{ nginx_mime_types }};
+    default_type  {{ nginx_default_type }};
+
+    access_log  {{ nginx_access_log_path }} {{ nginx_access_log_format }};
+
+    sendfile        {{ nginx_sendfile }};
+    keepalive_timeout  {{ nginx_keepalive_timeout }};
+
+    server {
+    listen       {{ nginx_listen_port }};
+    server_name  {{ nginx_server_name }};
+    
+    location / {
+    root   {{ nginx_root_dir }};
+    index  {{ nginx_index_files | join(' ') }};
+    }
+    }
+  }

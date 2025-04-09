@@ -1,39 +1,34 @@
----
 vector_version: "0.45.0"
 vector_architecture: "arm"
 vector_data_dir: "/var/lib/vector"
-
+vector_defaults:
+  clickhouse:
+    format: "json_each_row"
+    healthcheck: true
 vector_sources:
-  http_input:
-    type: "http_server"
-    address: "0.0.0.0:8686"
-    encoding: "json"  # Простая строка для источника http_server
-    headers: ["User-Agent"]
-    host_key: "hostname"
-    method: "POST"
-    path: "/"
-    path_key: "path"
-    query_parameters: ["application"]
-    response_code: 200
-    strict_path: "true"
-  internal_metrics:
-    type: "internal_metrics"
-
+  nginx_logs: # Переименовано из demo_logs_source
+    type: "file"
+    include: ["/var/log/nginx/my_access.log"]
+    read_from: "end"
 vector_sinks:
   console:
     type: "console"
     inputs:
-      - "http_input"
-      - "internal_metrics"
+      - "nginx_logs" # Изменено с remap_logs и demo_logs_source на nginx_logs
     encoding:
-      codec: "json"  # Структура для выхода console
+      codec: "json"
+  file:
+    type: "file"
+    path: "/var/log/vector/nginx_vector.log" # Путь изменен для логов Nginx
+    encoding:
+      codec: "json"
   clickhouse_output:
     type: "clickhouse"
     inputs:
-      - "http_input"
+      - "nginx_logs" # Изменено с remap_logs на nginx_logs
     endpoint: "http://clickhouse-01:8123"
-    database: "logs"
-    table: "vector"
+    database: "nginxdb" # Изменено с logs на nginxdb
+    table: "access_logs" # Изменено с vector на access_logs
     compression: "gzip"
     format: "json_each_row"
-    healthcheck: false
+    healthcheck: true

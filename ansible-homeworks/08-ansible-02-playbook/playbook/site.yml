@@ -1,3 +1,42 @@
+# Сборка Docker-образов и контейнеров
+- name: Build Docker images for ClickHouse and Vector
+  hosts: localhost
+  vars_files:
+    - group_vars/all/vars.yml
+  tasks:
+    - name: Debug decrypted password
+      ansible.builtin.debug:
+        msg: "Decrypted password is {{ common_password }}"
+
+    - name: Build Docker image for ClickHouse
+      ansible.builtin.command: >
+        docker build
+        --build-arg ROOT_PASSWORD="{{ common_password }}"
+        -t clickhouse-host .
+      args:
+        chdir: ./base
+      changed_when: false
+
+    - name: Build Docker image for Vector
+      ansible.builtin.command: >
+        docker build
+        --build-arg ROOT_PASSWORD="{{ common_password }}"
+        -t vector-host .
+      args:
+        chdir: ./base  # Путь к Dockerfile
+      changed_when: false
+
+    - name: Pull Nginx
+      ansible.builtin.command: >
+        docker pull nginx
+      changed_when: false
+
+    # Запуск контейнеров через docker-compose
+    - name: Start containers with docker-compose
+      ansible.builtin.command: >
+        docker compose -p 08-ansible-02-playbook up -d
+      changed_when: false
+
 # Установка ClickHouse
 - name: Install ClickHouse
   hosts: clickhouse
@@ -38,7 +77,8 @@
       block:
         - name: Debug ClickHouse package URLs
           ansible.builtin.debug:
-            msg: "Downloading from: https://packages.clickhouse.com/deb/pool/main/c/clickhouse/{{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
+            msg: "Downloading from: https://packages.clickhouse.com/deb/pool/main/c/clickhouse/
+            {{ item }}_{{ clickhouse_version }}_{{ clickhouse_architecture }}.deb"
           with_items: "{{ clickhouse_packages }}"
 
         - name: Download Clickhouse packages
@@ -94,37 +134,50 @@
 
     # Обновление конфигурации ClickHouse
     - name: Ensure <http_port>8123</http_port> exists
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/clickhouse-server/config.xml
         regexp: '^\\s*<http_port>'
         line: '    <http_port>8123</http_port>'
         insertafter: '</http_options_response>'
-        create: yes
+        create: true
+        mode: '0644'
 
     - name: Ensure <tcp_port>9000</tcp_port> exists
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/clickhouse-server/config.xml
         regexp: '^\\s*<tcp_port>'
         line: '    <tcp_port>9000</tcp_port>'
         insertafter: '</http_options_response>'
-        create: yes
+        create: true
+        mode: '0644'
 
     - name: Ensure listen_host for IPv4 is set
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/clickhouse-server/config.xml
         regexp: '^\\s*<listen_host>0.0.0.0'
         line: '    <listen_host>0.0.0.0</listen_host>'
         insertafter: '<interserver_http_port>'
-        create: yes
+        create: true
+        mode: '0644'
 
     - name: Restart ClickHouse service
-      service:
+      ansible.builtin.service:
         name: clickhouse-server
         state: restarted
 
-    # Дополнительно: логирование, если что-то пойдет не так
+    - name: Check ClickHouse service status
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: started
+      register: clickhouse_status
+
+    - name: Debug ClickHouse service status
+      ansible.builtin.debug:
+        msg: "ClickHouse service is running: {{ clickhouse_status.state }}"
+
     - name: Show ClickHouse logs (useful for debugging)
-      ansible.builtin.shell: tail -n 50 /var/log/clickhouse-server/clickhouse-server.log || true
+      ansible.builtin.shell: >
+        tail -n 50 /var/log/clickhouse-server/clickhouse-server.log || true
       register: ch_logs
       changed_when: false
       failed_when: false
@@ -135,7 +188,7 @@
 
     # Ждём пока ClickHouse действительно станет доступен
     - name: Wait for ClickHouse to become available via client
-      ansible.builtin.shell: "clickhouse-client -q 'SELECT 1'"
+      ansible.builtin.command: "clickhouse-client -q 'SELECT 1'"
       register: ch_ready
       retries: 10
       delay: 3
@@ -143,24 +196,31 @@
       changed_when: false
 
     # Создаем базу данных
-    - name: Create database
-      ansible.builtin.command: "clickhouse-client -q 'CREATE DATABASE IF NOT EXISTS logs;'"
-      register: create_db
-      failed_when: create_db.rc != 0 and create_db.rc != 82
-      changed_when: create_db.rc == 0
+    - name: Create nginxdb database in ClickHouse
+      ansible.builtin.command: >
+        clickhouse-client -q "CREATE DATABASE IF NOT EXISTS nginxdb;"
+      register: create_nginxdb
+      failed_when: create_nginxdb.rc != 0 and create_nginxdb.rc != 82
+      changed_when: create_nginxdb.rc == 0
 
-    - name: Create vector table in ClickHouse
+    - name: Create access_logs table in nginxdb
       ansible.builtin.command: >
         clickhouse-client -q "
-        CREATE TABLE IF NOT EXISTS logs.vector (
-            timestamp DateTime,
-            message String,
-            level String
-        ) ENGINE = MergeTree()
-        ORDER BY timestamp;"
-      register: create_table
-      failed_when: create_table.rc != 0 and create_table.rc != 82
-      changed_when: create_table.rc == 0
+        CREATE TABLE IF NOT EXISTS nginxdb.access_logs (
+            message String
+        )
+        ENGINE = MergeTree()
+        ORDER BY tuple();"
+      register: create_access_logs
+      failed_when: create_access_logs.rc != 0 and create_access_logs.rc != 82
+      changed_when: create_access_logs.rc == 0
+
+    - name: Create materialized view for parsed logs
+      ansible.builtin.command: >
+        clickhouse-client -q "{{ lookup('template', 'templates/materialized_view.sql.j2') }}"
+      register: create_materialized_view
+      failed_when: create_materialized_view.rc != 0 and create_materialized_view.rc != 82
+      changed_when: create_materialized_view.rc == 0
 
     # Проверка статуса ClickHouse
     - name: Check ClickHouse service status
@@ -259,3 +319,93 @@
       ansible.builtin.command: >
         bash -c "vector validate --config-toml /etc/vector/vector.toml"
       register: config_validation
+      changed_when: false
+
+# Проверка работоспособности систем
+- name: Verify the entire setup (Nginx, Vector, ClickHouse)
+  hosts: localhost
+  become: false
+  vars_files:
+    - group_vars/all/vars.yml
+  tasks:
+    # Проверка работоспособности Nginx
+    - name: Check if Nginx is running and accessible
+      ansible.builtin.uri:
+        url: http://localhost:8080
+        method: GET
+        status_code: 200
+      register: nginx_status
+      retries: 5
+      delay: 3
+      until: nginx_status.status == 200
+      ignore_errors: true
+
+    - name: Debug Nginx status (running)
+      ansible.builtin.debug:
+        msg: "Nginx is up and running"
+      when: nginx_status.status == 200
+
+    - name: Debug Nginx status (not accessible)
+      ansible.builtin.debug:
+        msg: "Nginx is not accessible"
+      when: nginx_status.status != 200
+
+    # Проверка наличия логов Nginx
+    - name: Check if Nginx logs are being generated
+      ansible.builtin.command: >
+        docker exec nginx-01 bash -c "cat /var/log/nginx/my_access.log"
+      register: nginx_logs
+      changed_when: false
+      failed_when: nginx_logs.rc != 0 and "'No such file or directory'" in nginx_logs.stderr
+
+    - name: Debug Nginx logs
+      ansible.builtin.debug:
+        msg: 'Nginx logs found: "{{ nginx_logs.stdout }}" if nginx_logs.stdout else "No Nginx logs found"'
+
+    # Проверка работы Vector
+    - name: Check if Vector is running
+      ansible.builtin.command: >
+        docker exec vector-01 bash -c "pgrep vector"
+      register: vector_status
+      changed_when: false
+      failed_when: vector_status.rc != 0
+
+    - name: Debug Vector status
+      ansible.builtin.debug:
+        msg: '"Vector is running" if vector_status.rc == 0 else "Vector is not running"'
+
+    # Проверка подключения Vector к ClickHouse
+    - name: Check if Vector can connect to ClickHouse
+      ansible.builtin.command: >
+        docker exec vector-01 bash -c "curl -s -o /dev/null -w '%{http_code}' http://clickhouse-01:8123/ping"
+      register: clickhouse_ping
+      changed_when: false
+      failed_when: clickhouse_ping.stdout != "200"
+
+    - name: Debug ClickHouse connection status
+      ansible.builtin.debug:
+        msg: '"Vector can connect to ClickHouse" if clickhouse_ping.stdout == "200" else "Vector cannot connect to ClickHouse"'
+
+    # Проверка наличия данных в ClickHouse
+    - name: Check if data exists in ClickHouse (nginxdb.access_logs)
+      ansible.builtin.command: >
+        docker exec clickhouse-01 clickhouse-client -q "SELECT COUNT(*) FROM nginxdb.access_logs"
+      register: clickhouse_data_count
+      changed_when: false
+      failed_when: clickhouse_data_count.rc != 0
+
+    - name: Debug ClickHouse data count
+      ansible.builtin.debug:
+        msg: '"Number of rows in nginxdb.access_logs: {{ clickhouse_data_count.stdout }}"'
+
+    # Проверка материализованного представления
+    - name: Check if data exists in ClickHouse materialized view (nginxdb.access_logs_view)
+      ansible.builtin.command: >
+        docker exec clickhouse-01 clickhouse-client -q "SELECT COUNT(*) FROM nginxdb.access_logs_view"
+      register: clickhouse_view_count
+      changed_when: false
+      failed_when: clickhouse_view_count.rc != 0
+
+    - name: Debug ClickHouse materialized view count
+      ansible.builtin.debug:
+        msg: '"Number of rows in nginxdb.access_logs_view: {{ clickhouse_view_count.stdout }}"'

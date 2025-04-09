@@ -1,37 +1,32 @@
 # Default Vector configuration
-data_dir = "{{ vector_data_dir }}"
-
-# Ingest data via HTTP server
-[sources.http_input]
-type = "http_server"
-address = "{{ vector_sources.http_input.address }}"
-encoding = "{{ vector_sources.http_input.encoding | default('json') }}"  # Простая строка
-headers = {{ vector_sources.http_input.headers | to_json | default([]) }}
-host_key = "{{ vector_sources.http_input.host_key | default('hostname') }}"
-method = "{{ vector_sources.http_input.method | default('POST') }}"
-path = "{{ vector_sources.http_input.path | default('/') }}"
-path_key = "{{ vector_sources.http_input.path_key | default('path') }}"
-query_parameters = {{ vector_sources.http_input.query_parameters | to_json | default([]) }}
-response_code = {{ vector_sources.http_input.response_code | default(200) }}
-strict_path = {{ vector_sources.http_input.strict_path | default(true) }}
-
-# Internal metrics
-[sources.internal_metrics]
-type = "internal_metrics"
-
-# Console output
-[sinks.console]
-type = "console"
-inputs = {{ vector_sinks.console.inputs | to_json }}
-encoding = { codec = "{{ vector_sinks.console.encoding.codec | default('json') }}" }  # Структура для выхода console
-
-# ClickHouse output
-[sinks.clickhouse_output]
-type = "clickhouse"
-inputs = {{ vector_sinks.clickhouse_output.inputs | to_json }}
-endpoint = "{{ vector_sinks.clickhouse_output.endpoint }}"
-database = "{{ vector_sinks.clickhouse_output.database }}"
-table = "{{ vector_sinks.clickhouse_output.table }}"
-compression = "{{ vector_sinks.clickhouse_output.compression }}"
-format = "{{ vector_sinks.clickhouse_output.format | default('json_each_row') }}"
-healthcheck = {{ vector_sinks.clickhouse_output.healthcheck | default(true) | lower }}
+  data_dir = "{{ vector_data_dir }}"
+  
+  # Source for Nginx logs
+  [sources.nginx_logs]
+    type = "file"
+    include = ["/var/log/nginx/my_access.log"]
+    read_from = "end"
+  
+  # Console output
+  [sinks.console]
+    type = "console"
+    inputs = ["nginx_logs"]
+    encoding = { codec = "{{ vector_sinks.console.encoding.codec | default('json') }}" }
+  
+  # File output
+  [sinks.file]
+    type = "file"
+    inputs = ["nginx_logs"]
+    path = "{{ vector_sinks.file.path }}"
+    encoding = { codec = "{{ vector_sinks.file.encoding.codec | default('json') }}" }
+  
+  # ClickHouse output
+  [sinks.clickhouse_output]
+    type = "clickhouse"
+    inputs = ["nginx_logs"]
+    endpoint = "{{ vector_sinks.clickhouse_output.endpoint }}"
+    database = "{{ vector_sinks.clickhouse_output.database }}"
+    table = "{{ vector_sinks.clickhouse_output.table }}"
+    compression = "{{ vector_sinks.clickhouse_output.compression }}"
+    format = "{{ vector_sinks.clickhouse_output.format | default(vector_defaults.clickhouse.format) }}"
+    healthcheck = {{ vector_sinks.clickhouse_output.healthcheck | default(vector_defaults.clickhouse.healthcheck) | lower }}
