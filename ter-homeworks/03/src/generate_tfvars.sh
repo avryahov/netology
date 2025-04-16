@@ -64,6 +64,9 @@ vm_web_name_prefix = "web"
 vm_web_disk_size   = 10
 vm_storage_disk_type = "network-hdd"
 
+ansible_inventory_file    = "./hosts.ini"
+ansible_playbook_file     = "./test.yml"
+
 vm_web_resources = {
   cores         = 2
   memory        = 1

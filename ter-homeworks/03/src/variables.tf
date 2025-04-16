@@ -20,8 +20,8 @@ variable "default_zone" {
   description = "https://cloud.yandex.ru/docs/overview/concepts/geo-scope"
 }
 variable "default_cidr" {
-  type        = list(string)
-  default     = ["10.0.1.0/24"]
+  type = list(string)
+  default = ["10.0.1.0/24"]
   description = "https://cloud.yandex.ru/docs/vpc/operations/subnet-create"
 }
 
@@ -29,4 +29,20 @@ variable "vpc_name" {
   type        = string
   default     = "develop"
   description = "VPC network&subnet name"
+}
+
+variable "ansible_inventory_file" {
+  description = "Path to the rendered ansible inventory file"
+  type        = string
+}
+
+variable "ansible_playbook_file" {
+  description = "Path to the ansible playbook file"
+  type        = string
+}
+
+variable "enable_ansible_provision" {
+  type        = bool
+  default     = true
+  description = "Enable or disable Ansible provisioning"
 }
