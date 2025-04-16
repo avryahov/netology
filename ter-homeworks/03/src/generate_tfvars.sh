@@ -74,7 +74,7 @@ each_vm = [
     vm_name     = "main"
     cpu         = 2
     ram         = 2
-    core_fraction = 10
+    core_fraction = 20
     disk_volume = 20
   },
   {

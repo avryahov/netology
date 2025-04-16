@@ -51,7 +51,7 @@ variable "vm_web_disk_size" {
 variable "vm_web_zone" {
   description = "The zone of the yandex compute instance"
   type        = string
-  default     = "ru-central1-b"
+  default     = "ru-central1-a"
 }
 
 variable "vm_web_network_interface_nat" {
