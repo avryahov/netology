@@ -1,6 +1,7 @@
 vm_web_count       = 2
 vm_web_name_prefix = "web"
 vm_web_disk_size   = 10
+vm_storage_disk_type = "network-hdd"
 
 vm_web_resources = {
   cores         = 2

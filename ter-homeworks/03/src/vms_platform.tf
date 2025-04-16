@@ -48,6 +48,12 @@ variable "vm_web_disk_size" {
   default     = 10
 }
 
+variable "vm_storage_disk_type" {
+  description = "Тип диска для web ВМ"
+  type        = string
+  default     = "network-hdd"
+}
+
 variable "vm_web_zone" {
   description = "The zone of the yandex compute instance"
   type        = string
