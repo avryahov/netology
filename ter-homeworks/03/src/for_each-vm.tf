@@ -1,24 +1,24 @@
-data "yandex_compute_image" "ubuntu" {
+data "yandex_compute_image" "ubuntu_db" {
   family = var.vm_web_family
 }
 
-resource "yandex_compute_instance" "web" {
-  count = var.vm_web_count
+resource "yandex_compute_instance" "db" {
+  for_each = {for vm in var.each_vm : vm.vm_name => vm}
 
-  name        = "${var.vm_web_name_prefix}-${count.index + 1}"
+  name        = each.value.vm_name
   platform_id = var.vm_web_platform_id
   zone        = var.vm_web_zone
 
   resources {
-    cores         = var.vm_web_resources.cores
-    memory        = var.vm_web_resources.memory
-    core_fraction = var.vm_web_resources.core_fraction
+    cores         = each.value.cpu
+    memory        = each.value.ram
+    core_fraction = each.value.core_fraction
   }
 
   boot_disk {
     initialize_params {
-      image_id = data.yandex_compute_image.ubuntu.id
-      size     = var.vm_web_disk_size
+      image_id = data.yandex_compute_image.ubuntu_db.id
+      size     = each.value.disk_volume
     }
   }
 

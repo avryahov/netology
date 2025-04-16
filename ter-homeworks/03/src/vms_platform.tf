@@ -60,8 +60,12 @@ variable "vms_metadata_serial_port_enable" {
   default     = 1
 }
 
-variable "vms_ssh_root_key" {
-  type        = string
-  description = "ssh-keygen -t ed25519"
-  sensitive   = true
+variable "each_vm" {
+  type = list(object({
+    vm_name       = string
+    cpu           = number
+    ram           = number
+    disk_volume   = number
+    core_fraction = number
+  }))
 }
