@@ -54,6 +54,12 @@ variable "vm_web_zone" {
   default     = "ru-central1-b"
 }
 
+variable "vm_web_network_interface_nat" {
+  description = "The nat flag of the yandex compute instance network interface"
+  type        = bool
+  default     = true
+}
+
 variable "vms_metadata_serial_port_enable" {
   description = "Конфигурация метаданных для каждой ВМ"
   type        = number
