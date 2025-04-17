@@ -39,6 +39,17 @@ fi
 
 echo "${GREEN}Учетные данные Yandex Cloud успешно получены.${NC}"
 
+# --- Загрузка SSH ключа ---
+SSH_KEY_PATH="$HOME/.ssh/id_ed25519.pub"
+echo "${BLUE}Проверяем наличие SSH ключа по пути: $SSH_KEY_PATH${NC}"
+if [[ ! -f "$SSH_KEY_PATH" ]]; then
+  echo "${RED}Ошибка: SSH ключ не найден по пути: $SSH_KEY_PATH${NC}"
+  exit 1
+fi
+
+SSH_KEY=$(cat "$SSH_KEY_PATH")
+echo "${GREEN}SSH ключ успешно загружен.${NC}"
+
 # --- Генерация файлов переменных ---
 PERSONAL_VARS_FILE="personal.auto.tfvars"
 VARS_FILE="terraform.tfvars"
@@ -49,6 +60,7 @@ cat > "$PERSONAL_VARS_FILE" <<EOF
 token           = "$TOKEN"
 cloud_id        = "$CLOUD_ID"
 folder_id       = "$FOLDER_ID"
+vms_ssh_root_key = "$SSH_KEY"
 EOF
 
 # --- Защита файла переменных ---

@@ -3,23 +3,23 @@ resource "local_file" "ansible_inventory" {
     webservers = [
       for vm in yandex_compute_instance.web :
       {
-        name  = vm.name
-        fqdn  = vm.fqdn
+        name              = vm.name
+        fqdn              = vm.fqdn
         network_interface = vm.network_interface
       }
     ]
     databases = [
       for vm in yandex_compute_instance.db :
       {
-        name  = vm.name
-        fqdn  = vm.fqdn
+        name              = vm.name
+        fqdn              = vm.fqdn
         network_interface = vm.network_interface
       }
     ]
     storage = [
       {
-        name  = yandex_compute_instance.storage.name
-        fqdn  = yandex_compute_instance.storage.fqdn
+        name              = yandex_compute_instance.storage.name
+        fqdn              = yandex_compute_instance.storage.fqdn
         network_interface = yandex_compute_instance.storage.network_interface
       }
     ]
@@ -37,17 +37,27 @@ resource "null_resource" "ansible_provision" {
   ]
 
   provisioner "local-exec" {
-    command    = "eval $(ssh-agent) && cat ~/.ssh/id_rsa.pub | ssh-add -"
+    command = <<EOT
+    # Создаем временный файл с ключом
+    echo "${var.vms_ssh_root_key}" > /tmp/ssh_key.pub
+
+    # Добавляем ключ в ssh-agent
+    eval $(ssh-agent) && cat /tmp/ssh_key.pub | ssh-add -
+
+    # Удаляем временный файл
+    rm -f /tmp/ssh_key.pub
+  EOT
+
     on_failure = continue
   }
 
   # optional sleep delay, uncomment if needed
-  # provisioner "local-exec" {
-  #   command = "sleep 60"
-  # }
+  provisioner "local-exec" {
+    command = "sleep 60"
+  }
 
   provisioner "local-exec" {
-    command = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ${var.ansible_inventory_file} ${var.ansible_playbook_file}"
+    command    = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ${var.ansible_inventory_file} ${var.ansible_playbook_file}"
     on_failure = continue
     environment = {
       ANSIBLE_HOST_KEY_CHECKING = "False"
