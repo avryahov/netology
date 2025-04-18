@@ -36,19 +36,6 @@ add_padding() {
   echo "$text$padding"
 }
 
-# Функция для крутящегося индикатора
-spinner() {
-  local delay=0.1
-  local spinstr='/-\|'
-  local msg="${1:-}"  # Если параметр не передан, используем пустое сообщение
-  while :; do
-    local temp=${spinstr#?}
-    printf "\r%s [%s]" "$msg" "${spinstr:0:1}"
-    spinstr=$temp${spinstr%"$temp"}
-    sleep $delay
-  done
-}
-
 # Функция для прогресс-бара
 progress_bar() {
   local duration=$1
@@ -58,15 +45,6 @@ progress_bar() {
     sleep $interval
   done
   printf "\n"
-}
-
-# Функция для безопасного завершения spinner
-terminate_spinner() {
-  if [ -n "$SPINNER_PID" ] && kill -0 "$SPINNER_PID" &>/dev/null; then
-    kill "$SPINNER_PID" &>/dev/null
-    wait "$SPINNER_PID" &>/dev/null
-    SPINNER_PID=""
-  fi
 }
 
 # Функция для проверки команд и наличия файлов
@@ -149,7 +127,7 @@ EOF
 echo "${GREEN}✅ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
 
 # Этап 3: Валидация конфигурации Packer
-echo "${BLUE}🔧 Валидируем конфигурацию Packer...${NC}"
+echo "${BLUE}🔧 Проверяем конфигурацию Packer...${NC}"
 if packer validate -var-file="$VARIABLES_FILE" "$CONFIG_FILE"; then
   echo "${GREEN}✓ Конфигурация Packer валидна.${NC}"
 else
@@ -159,14 +137,10 @@ fi
 
 # Этап 4: Сборка образа
 echo "${YELLOW}🚀 Начинаем сборку образа...${NC}"
-spinner "Сборка образа..." &
-SPINNER_PID=$!
 
 IMAGE_NAME=$(packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" |
   tee packer.log |
   awk -F, '$3 == "artifact" && $5 == "id" { print $6 }')
-
-terminate_spinner
 
 if [[ -z "$IMAGE_NAME" ]]; then
   echo "${RED}✗ Не удалось собрать образ. Проверьте логи (packer.log).${NC}"
@@ -177,5 +151,4 @@ echo "${GREEN}✅ Образ собран: ${IMAGE_NAME}${NC}"
 
 # Завершение
 echo "${BLUE}⏳ Завершение процесса...${NC}"
-progress_bar 5
 echo "${GREEN}✅ Все этапы успешно завершены.${NC}"
