@@ -11,7 +11,7 @@
         changed_when: false
 
       - name: Run deploy, if node is leader
-        shell: docker stack deploy --compose-file /opt/monitoring/docker-compose.yml swarm_monitoring
+        shell: docker stack deploy --compose-file /opt/monitoring/compose.yml swarm_monitoring
         when:
           - "'Leader' in docker_info.stdout"
           - "'Active' in docker_info.stdout"
