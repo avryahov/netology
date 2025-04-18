@@ -112,7 +112,15 @@ echo "${GREEN}Конфигурация Packer успешно проверена.
 
 # --- Сборка образа с помощью Packer ---
 echo "${BLUE}Начинаем сборку образа с помощью Packer...${NC}"
-if ! IMAGE_NAME=$(packer build -machine-readable '$PACKER_CONFIG_FILE' | awk -F',' '$3 == "artifact" && $5 == "id" {print $6}'); then
+
+# Передаем переменные в Packer
+if ! IMAGE_NAME=$(packer build \
+  -var "TOKEN=$TOKEN" \
+  -var "FOLDER_ID=$FOLDER_ID" \
+  -var "DEFAULT_ZONE=$DEFAULT_ZONE" \
+  -var "SUBNET_ID=$SUBNET_ID" \
+  -var "DISK_TYPE=$DISK_TYPE" \
+  -machine-readable "$PACKER_CONFIG_FILE" | awk -F',' '$3 == "artifact" && $5 == "id" {print $6}'); then
   echo "${RED}Ошибка: Не удалось собрать образ с помощью Packer.${NC}"
   exit 1
 fi
