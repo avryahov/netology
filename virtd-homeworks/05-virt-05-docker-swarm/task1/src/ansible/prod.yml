@@ -1,0 +1,31 @@
+---
+- name: test
+  gather_facts: false
+  hosts: nodes
+  vars:
+    ansible_ssh_user: ubuntu
+    ansible_python_interpreter: /usr/bin/python3.8
+  become: yes
+
+  pre_tasks:
+    - name: Validating the ssh port is open and
+      wait_for:
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+        port: 22
+        delay: 5
+        timeout: 300
+        state: started
+        search_regex: OpenSSH
+
+  tasks:
+    - name: Install Docker
+      apt:
+        name:
+          - docker
+          - jq
+        state: latest
+        update_cache: yes
+
+    - name: Log message after Docker installation
+      debug:
+        msg: "Docker has been successfully installed on {{ inventory_hostname }}"

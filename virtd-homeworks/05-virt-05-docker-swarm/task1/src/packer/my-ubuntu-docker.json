@@ -1,0 +1,34 @@
+{
+  "builders": [
+    {
+      "type": "yandex",
+      "token": "{{ TOKEN }}",
+      "folder_id": "{{ FOLDER_ID }}",
+      "zone": "{{ DEFAULT_ZONE }}",
+      "image_name": "ubuntu-22-04-lts-docker",
+      "image_description": "my custom ubuntu with docker",
+      "source_image_family": "ubuntu-22-04-lts",
+      "subnet_id": "{{ SUBNET_ID }}",
+      "use_ipv4_nat": true,
+      "disk_type": "{{ DISK_TYPE }}",
+      "ssh_username": "ubuntu"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": [
+        "echo 'start build packer'",
+        "sudo apt-get update -y",
+        "sudo apt-get -y install bridge-utils bind-utils iptables curl net-tools tcpdump rsync telnet openssh-server",
+        "sudo apt-get install ca-certificates curl",
+        "sudo install -m 0755 -d /etc/apt/keyrings",
+        "sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc",
+        "sudo chmod a+r /etc/apt/keyrings/docker.asc",
+        "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null",
+        "sudo apt-get update -y",
+        "sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y"
+      ]
+    }
+  ]
+}
