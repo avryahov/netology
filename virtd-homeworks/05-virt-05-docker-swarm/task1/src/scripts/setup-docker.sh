@@ -2,79 +2,77 @@
 
 set -euo pipefail
 
-# Цветной вывод
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-echo "${BLUE}Start building image...${NC}"
+echo "Start building image..."
 
 # --- Обновление пакетов ---
-echo "${BLUE}Updating package lists...${NC}"
-sudo apt-get update -y || { echo "${RED}Ошибка: Не удалось обновить пакеты.${NC}"; exit 1; }
+echo "Updating package lists..."
+sudo apt-get update -y || { echo "Ошибка: Не удалось обновить пакеты."; exit 1; }
 
 # --- Установка базовых пакетов ---
-echo "${BLUE}Installing base packages...${NC}"
-sudo apt-get -y install bridge-utils bind-utils iptables curl net-tools tcpdump rsync telnet openssh-server || {
-  echo "${RED}Ошибка: Не удалось установить базовые пакеты.${NC}"
+echo "Installing base packages..."
+sudo apt-get -y install bridge-utils dnsutils iptables curl net-tools tcpdump rsync telnet openssh-server || {
+  echo "Ошибка: Не удалось установить базовые пакеты."
   exit 1
 }
 
 # --- Установка зависимостей Docker ---
-echo "${BLUE}Installing Docker dependencies...${NC}"
+echo "Installing Docker dependencies..."
 sudo apt-get install -y ca-certificates curl || {
-  echo "${RED}Ошибка: Не удалось установить зависимости Docker.${NC}"
+  echo "Ошибка: Не удалось установить зависимости Docker."
   exit 1
 }
 
 # --- Настройка репозитория Docker ---
-echo "${BLUE}Setting up Docker repository...${NC}"
+echo "Setting up Docker repository..."
 sudo install -m 0755 -d /etc/apt/keyrings || {
-  echo "${RED}Ошибка: Не удалось создать директорию /etc/apt/keyrings.${NC}"
+  echo "Ошибка: Не удалось создать директорию /etc/apt/keyrings."
   exit 1
 }
-sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc || {
-  echo "${RED}Ошибка: Не удалось скачать ключ Docker.${NC}"
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc || {
+  echo "Ошибка: Не удалось скачать ключ Docker."
   exit 1
 }
 sudo chmod a+r /etc/apt/keyrings/docker.asc || {
-  echo "${RED}Ошибка: Не удалось изменить права доступа к ключу Docker.${NC}"
+  echo "Ошибка: Не удалось изменить права доступа к ключу Docker."
   exit 1
 }
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null || {
-  echo "${RED}Ошибка: Не удалось добавить репозиторий Docker.${NC}"
-  exit 1
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+  https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null || {
+    echo "Ошибка: Не удалось добавить репозиторий Docker."
+    exit 1
 }
 
 # --- Обновление пакетов после добавления репозитория Docker ---
-echo "${BLUE}Updating package lists after adding Docker repository...${NC}"
-sudo apt-get update -y || { echo "${RED}Ошибка: Не удалось обновить пакеты после добавления репозитория Docker.${NC}"; exit 1; }
+echo "Updating package lists after adding Docker repository..."
+sudo apt-get update -y || { echo "Ошибка: Не удалось обновить пакеты после добавления репозитория Docker."; exit 1; }
 
 # --- Установка Docker ---
-echo "${BLUE}Installing Docker...${NC}"
+echo "Installing Docker..."
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || {
-  echo "${RED}Ошибка: Не удалось установить Docker.${NC}"
+  echo "Ошибка: Не удалось установить Docker."
   exit 1
 }
 
 # --- Добавление пользователя в группу Docker ---
-echo "${BLUE}Adding user to Docker group...${NC}"
+echo "Adding user to Docker group..."
 sudo usermod -aG docker ubuntu || {
-  echo "${RED}Ошибка: Не удалось добавить пользователя в группу Docker.${NC}"
+  echo "Ошибка: Не удалось добавить пользователя в группу Docker."
   exit 1
 }
 
 # --- Проверка установки Docker ---
-echo "${BLUE}Verifying Docker installation...${NC}"
+echo "Verifying Docker installation..."
 docker --version || {
-  echo "${RED}Ошибка: Docker не установлен или не работает.${NC}"
+  echo "Ошибка: Docker не установлен или не работает."
   exit 1
 }
 
 # --- Очистка кэша APT ---
-echo "${BLUE}Cleaning up APT cache...${NC}"
-sudo apt-get clean || { echo "${RED}Ошибка: Не удалось очистить кэш APT.${NC}"; exit 1; }
-sudo rm -rf /var/lib/apt/lists/* || { echo "${RED}Ошибка: Не удалось удалить списки пакетов.${NC}"; exit 1; }
+echo "Cleaning up APT cache..."
+sudo apt-get clean || { echo "Ошибка: Не удалось очистить кэш APT."; exit 1; }
+sudo rm -rf /var/lib/apt/lists/* || { echo "Ошибка: Не удалось удалить списки пакетов."; exit 1; }
 
-echo "${GREEN}Image build completed successfully!${NC}"
+echo "Image build completed successfully!"
