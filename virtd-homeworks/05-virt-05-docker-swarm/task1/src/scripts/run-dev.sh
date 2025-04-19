@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # Цветовые коды ANSI
-RED='\033[0;31m'    # Красный
-GREEN='\033[0;32m'  # Зелёный
-YELLOW='\033[0;33m' # Жёлтый
-BLUE='\033[0;34m'   # Синий
-NC='\033[0m'        # Сброс цвета
+GREEN='\033[0;32m'    # Зелёный
+YELLOW='\033[0;33m'   # Жёлтый
+RED='\033[0;31m'      # Красный
+STEP_COLOR='\033[0;36m'  # Голубой для этапов
+NC='\033[0m'          # Сброс цвета
 
 # Пути и константы
 PACKER_DIR="../packer"
@@ -67,47 +67,47 @@ check() {
   local name=$1
   local cmd=$2
   local padded_name
-  padded_name=$(add_padding "🔍 Проверка $name")
+  padded_name=$(add_padding "[INFO] Проверка $name")
 
   printf "%s ... " "$padded_name"
 
   if [[ $cmd == command* ]]; then
     if ! command -v "${cmd#command }" &>/dev/null; then
-      echo "${RED}✗ НЕ НАЙДЕНО${NC}"
+      echo "${RED}FAILED${NC}"
       exit 1
     fi
   else
     if ! eval "$cmd"; then
-      echo "${RED}✗ НЕ НАЙДЕНО${NC}"
+      echo "${RED}FAILED${NC}"
       exit 1
     fi
   fi
 
-  echo "${GREEN}✓ OK${NC}"
+  echo "${GREEN}OK${NC}"
 }
 
 # Заголовок
-echo "${BLUE}🧪 Режим: ПРЕДПРОД (dev)${NC}"
+echo "${STEP_COLOR}[START] Режим: ПРЕДПРОД (dev)${NC}"
 
 # Этап 1: Предварительная проверка окружения
-echo "${YELLOW}⚙️ Выполняем предварительную проверку окружения:${NC}"
+echo "${STEP_COLOR}[STEP 1] Выполняем предварительную проверку окружения:${NC}"
 check "Yandex CLI" "command yc"
 check "jq (JSON parser)" "command jq"
 check "packer" "command packer"
 check "SSH ключ" "[[ -f $HOME/.ssh/id_ed25519.pub ]]"
-echo "${YELLOW}📂 Структура проекта:${NC}"
+echo "[INFO] Структура проекта:"
 tree ../ || true
 
 # Этап 2: Получение и запись конфигурации для Yandex Cloud
-echo "${BLUE}⚙️ Получение конфигурации Yandex Cloud:${NC}"
+echo "${STEP_COLOR}[STEP 2] Получение конфигурации Yandex Cloud:${NC}"
 TOKEN=$(yc config get token)
 FOLDER_ID=$(yc config get folder-id)
 CLOUD_ID=$(yc config get cloud-id)
 
 # Выводим маскированные токены и идентификаторы
-echo "🔐 TOKEN:                $(log_masked "$TOKEN")"
-echo "🆔 FOLDER_ID:            $(log_masked "$FOLDER_ID")"
-echo "☁️ CLOUD_ID:             $(log_masked "$CLOUD_ID")"
+echo "TOKEN:                $(log_masked "$TOKEN")"
+echo "FOLDER_ID:            $(log_masked "$FOLDER_ID")"
+echo "CLOUD_ID:             $(log_masked "$CLOUD_ID")"
 
 # Получение ID сети
 NETWORK_ID=$(yc vpc network get default --format=json | jq -r '.id')
@@ -115,7 +115,7 @@ NETWORK_ID=$(yc vpc network get default --format=json | jq -r '.id')
 # Этап 3: Проверка наличия подсети и генерация нового имени
 EXISTING_SUBNETS=$(yc vpc subnet list --format=json | jq -r '.[] | "\(.name) \(.v4_cidr_blocks[0])"')
 
-echo "${YELLOW}🔍 Проверяем наличие подсети с именем '${SUBNET_NAME}'...${NC}"
+echo "[INFO] Проверяем наличие подсети с именем '${SUBNET_NAME}'..."
 
 # Функция для подсчета количества подсетей с заданным префиксом
 count_subnets_with_prefix() {
@@ -141,46 +141,46 @@ generate_unique_ip_range() {
 
 # Проверяем, существует ли подсеть с базовым именем SUBNET_NAME
 if echo "$EXISTING_SUBNETS" | grep -q "^$SUBNET_NAME "; then
-  echo "${YELLOW}⚠️ Подсеть с именем '${SUBNET_NAME}' уже существует.${NC}"
+  echo "${YELLOW}[WARN] Подсеть с именем '${SUBNET_NAME}' уже существует.${NC}"
 
   # Считаем количество подсетей с префиксом SUBNET_NAME
   SUBNET_COUNT=$(count_subnets_with_prefix "$SUBNET_NAME")
   NEW_SUBNET_NAME="${SUBNET_NAME}_$((SUBNET_COUNT + 1))"
 
-  echo "${YELLOW}💡 Генерируем новое имя подсети: '${NEW_SUBNET_NAME}'.${NC}"
+  echo "[INFO] Генерируем новое имя подсети: '${NEW_SUBNET_NAME}'."
 else
   NEW_SUBNET_NAME="$SUBNET_NAME"
-  echo "${GREEN}✓ Подсеть с именем '${SUBNET_NAME}' не найдена. Будет использовано имя '${NEW_SUBNET_NAME}'.${NC}"
+  echo "${GREEN}[INFO] Подсеть с именем '${SUBNET_NAME}' не найдена. Будет использовано имя '${NEW_SUBNET_NAME}'.${NC}"
 fi
 
 # Генерируем уникальный IP-диапазон
 NEW_SUBNET_IP_RANGE=$(generate_unique_ip_range)
-echo "${YELLOW}💡 Генерируем уникальный IP-диапазон: '${NEW_SUBNET_IP_RANGE}'.${NC}"
+echo "[INFO] Генерируем уникальный IP-диапазон: '${NEW_SUBNET_IP_RANGE}'."
 
 # Проверяем, свободно ли новое имя
-echo "${YELLOW}🔍 Проверяем, свободно ли имя '${NEW_SUBNET_NAME}'...${NC}"
+echo "[INFO] Проверяем, свободно ли имя '${NEW_SUBNET_NAME}'..."
 if echo "$EXISTING_SUBNETS" | grep -q "^$NEW_SUBNET_NAME "; then
-  echo "${RED}✗ Имя '${NEW_SUBNET_NAME}' уже занято. Возможна коллизия.${NC}"
+  echo "${RED}[ERROR] Имя '${NEW_SUBNET_NAME}' уже занято. Возможна коллизия.${NC}"
   exit 1
 else
-  echo "${GREEN}✓ Имя '${NEW_SUBNET_NAME}' свободно для использования.${NC}"
+  echo "${GREEN}[INFO] Имя '${NEW_SUBNET_NAME}' свободно для использования.${NC}"
 fi
 
 # Создание новой подсети
-echo "${YELLOW}🛠 Создание подсети '${NEW_SUBNET_NAME}' с IP-диапазоном '${NEW_SUBNET_IP_RANGE}'...${NC}"
+echo "[INFO] Создание подсети '${NEW_SUBNET_NAME}' с IP-диапазоном '${NEW_SUBNET_IP_RANGE}'..."
 NEW_SUBNET_ID=$(yc vpc subnet create \
   --name "$NEW_SUBNET_NAME" \
   --network-id "$NETWORK_ID" \
   --zone "$DEFAULT_ZONE" \
   --range "$NEW_SUBNET_IP_RANGE" \
   --format=json | jq -r '.id')
-echo "${GREEN}✓ Подсеть '${NEW_SUBNET_NAME}' успешно создана.${NC}"
+echo "${GREEN}[INFO] Подсеть '${NEW_SUBNET_NAME}' успешно создана.${NC}"
 
 # Этап 4: Проверка наличия образа и инкрементация имени
 IMAGE_NAME="ubuntu-2004-lts-docker"
 EXISTING_IMAGES=$(yc compute image list --format=json | jq -r '.[].name')
 
-echo "${YELLOW}🔍 Проверяем наличие образа с именем '${IMAGE_NAME}'...${NC}"
+echo "[INFO] Проверяем наличие образа с именем '${IMAGE_NAME}'..."
 
 # Функция для подсчета количества образов с заданным префиксом
 count_images_with_prefix() {
@@ -190,25 +190,25 @@ count_images_with_prefix() {
 
 # Проверяем, существует ли образ с базовым именем IMAGE_NAME
 if echo "$EXISTING_IMAGES" | grep -q "^$IMAGE_NAME\$"; then
-  echo "${YELLOW}⚠️ Образ с именем '${IMAGE_NAME}' уже существует.${NC}"
+  echo "${YELLOW}[WARN] Образ с именем '${IMAGE_NAME}' уже существует.${NC}"
 
   # Считаем количество образов с префиксом IMAGE_NAME
   IMAGE_COUNT=$(count_images_with_prefix "$IMAGE_NAME")
   NEW_IMAGE_NAME="${IMAGE_NAME}_$((IMAGE_COUNT + 1))"
 
-  echo "${YELLOW}💡 Генерируем новое имя образа: '${NEW_IMAGE_NAME}'.${NC}"
+  echo "[INFO] Генерируем новое имя образа: '${NEW_IMAGE_NAME}'."
 else
   NEW_IMAGE_NAME="$IMAGE_NAME"
-  echo "${GREEN}✓ Образ с именем '${IMAGE_NAME}' не найден. Будет использовано имя '${NEW_IMAGE_NAME}'.${NC}"
+  echo "${GREEN}[INFO] Образ с именем '${IMAGE_NAME}' не найден. Будет использовано имя '${NEW_IMAGE_NAME}'.${NC}"
 fi
 
 # Проверяем, свободно ли новое имя
-echo "${YELLOW}🔍 Проверяем, свободно ли имя '${NEW_IMAGE_NAME}'...${NC}"
+echo "[INFO] Проверяем, свободно ли имя '${NEW_IMAGE_NAME}'..."
 if echo "$EXISTING_IMAGES" | grep -q "^$NEW_IMAGE_NAME\$"; then
-  echo "${RED}✗ Имя '${NEW_IMAGE_NAME}' уже занято. Возможна коллизия.${NC}"
+  echo "${RED}[ERROR] Имя '${NEW_IMAGE_NAME}' уже занято. Возможна коллизия.${NC}"
   exit 1
 else
-  echo "${GREEN}✓ Имя '${NEW_IMAGE_NAME}' свободно для использования.${NC}"
+  echo "${GREEN}[INFO] Имя '${NEW_IMAGE_NAME}' свободно для использования.${NC}"
 fi
 
 # Этап 5: Запись переменных в файл
@@ -223,19 +223,19 @@ cat > "$VARIABLES_FILE" <<EOF
 }
 EOF
 
-echo "${GREEN}✓ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
+echo "${GREEN}[INFO] Переменные для Packer записаны в $VARIABLES_FILE${NC}"
 
 # Этап 6: Валидация конфигурации Packer
-echo "${BLUE}🔧 Проверяем конфигурацию Packer...${NC}"
+echo "${STEP_COLOR}[STEP 6] Проверяем конфигурацию Packer...${NC}"
 if packer validate -var-file="$VARIABLES_FILE" "$CONFIG_FILE"; then
-  echo "${GREEN}✓ Конфигурация Packer валидна.${NC}"
+  echo "${GREEN}[INFO] Конфигурация Packer валидна.${NC}"
 else
-  echo "${RED}✗ Ошибка валидации конфигурации Packer.${NC}"
+  echo "${RED}[ERROR] Ошибка валидации конфигурации Packer.${NC}"
   exit 1
 fi
 
 # Этап 7: Сборка образа
-echo "${YELLOW}🚀 Начинаем сборку образа...${NC}"  # Перевод строки после сообщения
+echo "[INFO] Начинаем сборку образа..."  # Перевод строки после сообщения
 
 packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
 BUILD_PID=$!
@@ -246,25 +246,25 @@ wait $BUILD_PID
 IMAGE_ID=$(yc compute image list --format=json | jq -r --arg name "$NEW_IMAGE_NAME" '.[] | select(.name == $name) | .id')
 
 if [[ -z "$IMAGE_ID" ]]; then
-  echo "${RED}✗ Не удалось собрать образ. Проверьте логи (packer.log).${NC}"
+  echo "${RED}[ERROR] Не удалось собрать образ. Проверьте логи (packer.log).${NC}"
   exit 1
 fi
 
-echo "${GREEN}✓ Образ собран: ${IMAGE_ID}${NC}"
+echo "${GREEN}[INFO] Образ собран: ${IMAGE_ID}${NC}"
 
 # Этап 8: Удаление нового образа
-echo "${YELLOW}🗑 Удаляем новый образ (${NEW_IMAGE_NAME})...${NC}"
+echo "[INFO] Удаляем новый образ (${NEW_IMAGE_NAME})..."
 yc compute image delete --id "$IMAGE_ID"
-echo "${GREEN}✓ Новый образ удален.${NC}"
+echo "${GREEN}[INFO] Новый образ удален.${NC}"
 
 # Этап 9: Удаление новой подсети
-echo "${YELLOW}🗑 Удаляем новую подсеть (${NEW_SUBNET_NAME})...${NC}"
+echo "[INFO] Удаляем новую подсеть (${NEW_SUBNET_NAME})..."
 yc vpc subnet delete --id "$NEW_SUBNET_ID"
-echo "${GREEN}✓ Новая подсеть удалена.${NC}"
+echo "${GREEN}[INFO] Новая подсеть удалена.${NC}"
 
 # Завершение
 if [ $? -eq 0 ]; then
-  echo "${GREEN}✓ Все этапы успешно завершены.${NC}"
+  echo "${GREEN}[SUCCESS] Все этапы успешно завершены.${NC}"
 else
-  echo "${RED}✗ Сборка завершена с ошибкой.${NC}"
+  echo "${RED}[ERROR] Сборка завершена с ошибкой.${NC}"
 fi
