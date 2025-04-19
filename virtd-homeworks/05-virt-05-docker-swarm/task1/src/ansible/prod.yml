@@ -66,20 +66,33 @@
       changed_when: false
 
     - name: Check if worker nodes are already part of a swarm
-      delegate_to: "{{ item }}"
-      loop: "{{ worker_nodes }}"
-      when: inventory_hostname == item
+      run_once: true
       ansible.builtin.command: docker info --format '{% raw %}{{ .Swarm.LocalNodeState }}{% endraw %}'
+      loop: "{{ worker_nodes }}"
+      loop_control:
+        label: "{{ item }}"
+      delegate_to: "{{ item }}"
       register: worker_swarm_state
       changed_when: false
       ignore_errors: true
+
+    - name: Set worker swarm state map
+      run_once: true
+      ansible.builtin.set_fact:
+        worker_swarm_state_map: >-
+          {{
+            dict(
+              worker_swarm_state.results | map(attribute='item') | zip(
+              worker_swarm_state.results | map(attribute='stdout'))
+            )
+          }}
 
     - name: Join worker nodes to the Swarm cluster
       delegate_to: "{{ item }}"
       loop: "{{ worker_nodes }}"
       when:
         - inventory_hostname == item
-        - worker_swarm_state.results | selectattr('item', 'equalto', item) | map(attribute='stdout') | first != "active"
+        - worker_swarm_state_map[item] != "active"
       ansible.builtin.shell: >
         docker swarm join --token {{ worker_join_token.stdout }}
         {{ hostvars[manager_node].ansible_host }}:2377
@@ -87,7 +100,7 @@
       changed_when: "'This node joined a swarm' in join_result.stdout"
       ignore_errors: true
 
-    # Начало задач для Portainer
+    # Portainer setup
     - name: Check if Portainer container exists and is running
       # noqa run-once
       delegate_to: "{{ portainer_node }}"
@@ -96,13 +109,12 @@
         docker inspect -f '{% raw %}{{ .State.Running }}{% endraw %}' portainer || echo "false"
       register: portainer_status
       changed_when: false
-      failed_when: portainer_status.rc != 0 and "No such container" not in portainer_status.stderr
 
     - name: Remove existing Portainer container if it is not running
       # noqa run-once
       delegate_to: "{{ portainer_node }}"
       run_once: true
-      when: portainer_status.stdout == "false"
+      when: portainer_status.stdout != "true"
       ansible.builtin.shell: >
         docker rm -f portainer
       changed_when: true
@@ -112,7 +124,7 @@
       # noqa run-once
       delegate_to: "{{ portainer_node }}"
       run_once: true
-      when: portainer_status.stdout == "false"
+      when: portainer_status.stdout != "true"
       ansible.builtin.shell: >
         docker pull portainer/portainer-ce:latest
       changed_when: false
@@ -121,7 +133,7 @@
       # noqa run-once
       delegate_to: "{{ portainer_node }}"
       run_once: true
-      when: portainer_status.stdout == "false"
+      when: portainer_status.stdout != "true"
       ansible.builtin.shell: >
         docker run -d \
           --name portainer \
@@ -136,7 +148,7 @@
       # noqa run-once
       delegate_to: "{{ portainer_node }}"
       run_once: true
-      when: portainer_status.stdout == "false"
+      when: portainer_status.stdout != "true"
       ansible.builtin.debug:
         msg: "Portainer has been successfully installed on {{ portainer_node }}"
 
