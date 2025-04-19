@@ -117,20 +117,56 @@ else
   echo "${GREEN}✓ Подсеть '$SUBNET_NAME' уже существует.${NC}"
 fi
 
-# Запись переменных в файл
+# Этап 3: Проверка наличия образа и инкрементация имени
+IMAGE_NAME="ubuntu-2004-lts-docker"
+EXISTING_IMAGES=$(yc compute image list --format=json | jq -r '.[].name')
+
+echo "${YELLOW}🔍 Проверяем наличие образа с именем '${IMAGE_NAME}'...${NC}"
+
+# Функция для подсчета количества образов с заданным префиксом
+count_images_with_prefix() {
+  local prefix=$1
+  echo "$EXISTING_IMAGES" | grep -E "^${prefix}(_[0-9]+)?$" | wc -l
+}
+
+# Проверяем, существует ли образ с базовым именем IMAGE_NAME
+if echo "$EXISTING_IMAGES" | grep -q "^$IMAGE_NAME\$"; then
+  echo "${YELLOW}⚠️ Образ с именем '${IMAGE_NAME}' уже существует.${NC}"
+
+  # Считаем количество образов с префиксом IMAGE_NAME
+  IMAGE_COUNT=$(count_images_with_prefix "$IMAGE_NAME")
+  NEW_IMAGE_NAME="${IMAGE_NAME}_$((IMAGE_COUNT + 1))"
+
+  echo "${YELLOW}💡 Генерируем новое имя образа: '${NEW_IMAGE_NAME}'.${NC}"
+else
+  NEW_IMAGE_NAME="$IMAGE_NAME"
+  echo "${GREEN}✓ Образ с именем '${IMAGE_NAME}' не найден. Будет использовано имя '${NEW_IMAGE_NAME}'.${NC}"
+fi
+
+# Проверяем, свободно ли новое имя
+echo "${YELLOW}🔍 Проверяем, свободно ли имя '${NEW_IMAGE_NAME}'...${NC}"
+if echo "$EXISTING_IMAGES" | grep -q "^$NEW_IMAGE_NAME\$"; then
+  echo "${RED}✗ Имя '${NEW_IMAGE_NAME}' уже занято. Возможна коллизия.${NC}"
+  exit 1
+else
+  echo "${GREEN}✓ Имя '${NEW_IMAGE_NAME}' свободно для использования.${NC}"
+fi
+
+# Этап 4: Запись переменных в файл
 cat > "$VARIABLES_FILE" <<EOF
 {
   "TOKEN": "$TOKEN",
   "FOLDER_ID": "$FOLDER_ID",
   "DEFAULT_ZONE": "$DEFAULT_ZONE",
   "SUBNET_ID": "$SUBNET_ID",
-  "DISK_TYPE": "$DISK_TYPE"
+  "DISK_TYPE": "$DISK_TYPE",
+  "IMAGE_NAME": "$NEW_IMAGE_NAME"
 }
 EOF
 
 echo "${GREEN}✓ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
 
-# Этап 3: Валидация конфигурации Packer
+# Этап 5: Валидация конфигурации Packer
 echo "${BLUE}🔧 Проверяем конфигурацию Packer...${NC}"
 if packer validate -var-file="$VARIABLES_FILE" "$CONFIG_FILE"; then
   echo "${GREEN}✓ Конфигурация Packer валидна.${NC}"
@@ -139,7 +175,7 @@ else
   exit 1
 fi
 
-# Этап 4: Сборка образа
+# Этап 6: Сборка образа
 echo "${YELLOW}🚀 Начинаем сборку образа...${NC}"
 
 packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
@@ -147,7 +183,8 @@ BUILD_PID=$!
 spinner $BUILD_PID
 wait $BUILD_PID
 
-IMAGE_ID=$(yc compute image list --format=json | jq -r '.[0].id')
+# Получаем ID нового образа
+IMAGE_ID=$(yc compute image list --format=json | jq -r --arg name "$NEW_IMAGE_NAME" '.[] | select(.name == $name) | .id')
 
 if [[ -z "$IMAGE_ID" ]]; then
   echo "${RED}✗ Не удалось собрать образ. Проверьте логи (packer.log).${NC}"
@@ -155,6 +192,11 @@ if [[ -z "$IMAGE_ID" ]]; then
 fi
 
 echo "${GREEN}✓ Образ собран: ${IMAGE_ID}${NC}"
+
+# Этап 7: Удаление нового образа
+echo "${YELLOW}🗑 Удаляем новый образ (${NEW_IMAGE_NAME})...${NC}"
+yc compute image delete --id "$IMAGE_ID"
+echo "${GREEN}✓ Новый образ удален.${NC}"
 
 # Завершение
 if [ $? -eq 0 ]; then
