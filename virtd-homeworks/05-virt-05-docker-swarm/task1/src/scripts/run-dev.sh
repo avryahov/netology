@@ -101,23 +101,71 @@ echo "☁️ CLOUD_ID:             $(log_masked "$CLOUD_ID")"
 # Получение ID сети
 NETWORK_ID=$(yc vpc network get default --format=json | jq -r '.id')
 
-# Проверка существования подсети
-SUBNET_ID=$(yc vpc subnet get "$SUBNET_NAME" --format=json 2>/dev/null | jq -r '.id' || true)
+# Этап 3: Проверка наличия подсети и генерация нового имени
+EXISTING_SUBNETS=$(yc vpc subnet list --format=json | jq -r '.[] | "\(.name) \(.v4_cidr_blocks[0])"')
 
-if [[ -z "$SUBNET_ID" ]]; then
-  echo "${YELLOW}🛠 Создание подсети '$SUBNET_NAME'...${NC}"
-  SUBNET_ID=$(yc vpc subnet create \
-    --name "$SUBNET_NAME" \
-    --network-id "$NETWORK_ID" \
-    --zone "$DEFAULT_ZONE" \
-    --range 192.168.0.0/24 \
-    --format=json | jq -r '.id')
-  echo "${GREEN}✓ Подсеть '$SUBNET_NAME' успешно создана.${NC}"
+echo "${YELLOW}🔍 Проверяем наличие подсети с именем '${SUBNET_NAME}'...${NC}"
+
+# Функция для подсчета количества подсетей с заданным префиксом
+count_subnets_with_prefix() {
+  local prefix=$1
+  echo "$EXISTING_SUBNETS" | grep -E "^${prefix}(_[0-9]+)? " | wc -l
+}
+
+# Функция для генерации уникального IP-диапазона
+generate_unique_ip_range() {
+  local base="192.168"
+  local index=1
+
+  # Проверяем все существующие диапазоны
+  while true; do
+    local range="${base}.${index}.0/24"
+    if ! echo "$EXISTING_SUBNETS" | grep -q "$range"; then
+      echo "$range"
+      return
+    fi
+    index=$((index + 1))
+  done
+}
+
+# Проверяем, существует ли подсеть с базовым именем SUBNET_NAME
+if echo "$EXISTING_SUBNETS" | grep -q "^$SUBNET_NAME "; then
+  echo "${YELLOW}⚠️ Подсеть с именем '${SUBNET_NAME}' уже существует.${NC}"
+
+  # Считаем количество подсетей с префиксом SUBNET_NAME
+  SUBNET_COUNT=$(count_subnets_with_prefix "$SUBNET_NAME")
+  NEW_SUBNET_NAME="${SUBNET_NAME}_$((SUBNET_COUNT + 1))"
+
+  echo "${YELLOW}💡 Генерируем новое имя подсети: '${NEW_SUBNET_NAME}'.${NC}"
 else
-  echo "${GREEN}✓ Подсеть '$SUBNET_NAME' уже существует.${NC}"
+  NEW_SUBNET_NAME="$SUBNET_NAME"
+  echo "${GREEN}✓ Подсеть с именем '${SUBNET_NAME}' не найдена. Будет использовано имя '${NEW_SUBNET_NAME}'.${NC}"
 fi
 
-# Этап 3: Проверка наличия образа и инкрементация имени
+# Генерируем уникальный IP-диапазон
+NEW_SUBNET_IP_RANGE=$(generate_unique_ip_range)
+echo "${YELLOW}💡 Генерируем уникальный IP-диапазон: '${NEW_SUBNET_IP_RANGE}'.${NC}"
+
+# Проверяем, свободно ли новое имя
+echo "${YELLOW}🔍 Проверяем, свободно ли имя '${NEW_SUBNET_NAME}'...${NC}"
+if echo "$EXISTING_SUBNETS" | grep -q "^$NEW_SUBNET_NAME "; then
+  echo "${RED}✗ Имя '${NEW_SUBNET_NAME}' уже занято. Возможна коллизия.${NC}"
+  exit 1
+else
+  echo "${GREEN}✓ Имя '${NEW_SUBNET_NAME}' свободно для использования.${NC}"
+fi
+
+# Создание новой подсети
+echo "${YELLOW}🛠 Создание подсети '${NEW_SUBNET_NAME}' с IP-диапазоном '${NEW_SUBNET_IP_RANGE}'...${NC}"
+NEW_SUBNET_ID=$(yc vpc subnet create \
+  --name "$NEW_SUBNET_NAME" \
+  --network-id "$NETWORK_ID" \
+  --zone "$DEFAULT_ZONE" \
+  --range "$NEW_SUBNET_IP_RANGE" \
+  --format=json | jq -r '.id')
+echo "${GREEN}✓ Подсеть '${NEW_SUBNET_NAME}' успешно создана.${NC}"
+
+# Этап 4: Проверка наличия образа и инкрементация имени
 IMAGE_NAME="ubuntu-2004-lts-docker"
 EXISTING_IMAGES=$(yc compute image list --format=json | jq -r '.[].name')
 
@@ -132,11 +180,11 @@ count_images_with_prefix() {
 # Проверяем, существует ли образ с базовым именем IMAGE_NAME
 if echo "$EXISTING_IMAGES" | grep -q "^$IMAGE_NAME\$"; then
   echo "${YELLOW}⚠️ Образ с именем '${IMAGE_NAME}' уже существует.${NC}"
-  
+
   # Считаем количество образов с префиксом IMAGE_NAME
   IMAGE_COUNT=$(count_images_with_prefix "$IMAGE_NAME")
   NEW_IMAGE_NAME="${IMAGE_NAME}_$((IMAGE_COUNT + 1))"
-  
+
   echo "${YELLOW}💡 Генерируем новое имя образа: '${NEW_IMAGE_NAME}'.${NC}"
 else
   NEW_IMAGE_NAME="$IMAGE_NAME"
@@ -152,13 +200,13 @@ else
   echo "${GREEN}✓ Имя '${NEW_IMAGE_NAME}' свободно для использования.${NC}"
 fi
 
-# Этап 4: Запись переменных в файл
+# Этап 5: Запись переменных в файл
 cat > "$VARIABLES_FILE" <<EOF
 {
   "TOKEN": "$TOKEN",
   "FOLDER_ID": "$FOLDER_ID",
   "DEFAULT_ZONE": "$DEFAULT_ZONE",
-  "SUBNET_ID": "$SUBNET_ID",
+  "SUBNET_ID": "$NEW_SUBNET_ID",
   "DISK_TYPE": "$DISK_TYPE",
   "IMAGE_NAME": "$NEW_IMAGE_NAME"
 }
@@ -166,8 +214,8 @@ EOF
 
 echo "${GREEN}✓ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
 
-# Этап 5: Валидация конфигурации Packer
-echo "${BLUE}⚙️ Проверяем конфигурацию Packer...${NC}"
+# Этап 6: Валидация конфигурации Packer
+echo "${BLUE}🔧 Проверяем конфигурацию Packer...${NC}"
 if packer validate -var-file="$VARIABLES_FILE" "$CONFIG_FILE"; then
   echo "${GREEN}✓ Конфигурация Packer валидна.${NC}"
 else
@@ -175,7 +223,7 @@ else
   exit 1
 fi
 
-# Этап 6: Сборка образа
+# Этап 7: Сборка образа
 printf "${YELLOW}🚀 Начинаем сборку образа... ${NC}"  # Выводим сообщение без перевода строки
 
 packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
@@ -193,10 +241,15 @@ fi
 
 echo "${GREEN}✓ Образ собран: ${IMAGE_ID}${NC}"
 
-# Этап 7: Удаление нового образа
+# Этап 8: Удаление нового образа
 echo "${YELLOW}🗑 Удаляем новый образ (${NEW_IMAGE_NAME})...${NC}"
 yc compute image delete --id "$IMAGE_ID"
 echo "${GREEN}✓ Новый образ удален.${NC}"
+
+# Этап 9: Удаление новой подсети
+echo "${YELLOW}🗑 Удаляем новую подсеть (${NEW_SUBNET_NAME})...${NC}"
+yc vpc subnet delete --id "$NEW_SUBNET_ID"
+echo "${GREEN}✓ Новая подсеть удалена.${NC}"
 
 # Завершение
 if [ $? -eq 0 ]; then
