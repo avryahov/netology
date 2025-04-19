@@ -1,4 +1,3 @@
----
 - name: Configure Docker Swarm Cluster with Portainer
   gather_facts: false
   hosts: nodes
@@ -38,10 +37,20 @@
       run_once: true
 
   tasks:
+    - name: Check if the node is already part of a swarm
+      # noqa run-once
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+      ansible.builtin.command: docker info --format '{{ Swarm.LocalNodeState }}'
+      register: swarm_state
+      changed_when: false
+      ignore_errors: true
+
     - name: Initialize Docker Swarm on the manager node
       # noqa run-once
       delegate_to: "{{ manager_node }}"
       run_once: true
+      when: swarm_state.stdout != "active"
       ansible.builtin.command: >
         docker swarm init --advertise-addr {{ hostvars[manager_node].ansible_host }}
       register: swarm_init
@@ -59,10 +68,12 @@
       delegate_to: "{{ item }}"
       loop: "{{ worker_nodes }}"
       when: inventory_hostname == item
-      ansible.builtin.command: >
+      ansible.builtin.shell: >
         docker swarm join --token {{ worker_join_token.stdout }}
         {{ hostvars[manager_node].ansible_host }}:2377
-      changed_when: "'This node joined a swarm' in command_result.stdout"
+      register: join_result
+      changed_when: "'This node joined a swarm' in join_result.stdout"
+      ignore_errors: true
 
     - name: Install Portainer on the designated node
       # noqa run-once
