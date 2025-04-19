@@ -16,6 +16,21 @@ DEFAULT_ZONE="ru-central1-a"
 SUBNET_NAME="develop"
 DISK_TYPE="network-hdd"
 
+# Простой спиннер для отображения во время длительных задач
+spinner() {
+  local pid=$1
+  local delay=0.1
+  local spinstr='|/-\'
+
+  while ps -p $pid > /dev/null; do
+    local current_char=${spinstr:0:1}
+    printf "[%c]\b\b\b" "$current_char"
+    spinstr=${spinstr:1}${spinstr:0:1}
+    sleep $delay
+  done
+  printf "    \b\b\b\b"
+}
+
 # Функция для маскирования значений (выводим только последние 4 символа)
 log_masked() {
   local val=$1
@@ -34,17 +49,6 @@ add_padding() {
   fi
 
   echo "$text$padding"
-}
-
-# Функция для прогресс-бара
-progress_bar() {
-  local duration=$1
-  local interval=$((duration / 100))
-  for ((i = 0; i <= 100; i++)); do
-    printf "\r[%-100s] %d%%" "$(printf "%.s" $(seq 1 $i))" "$i"
-    sleep $interval
-  done
-  printf "\n"
 }
 
 # Функция для проверки команд и наличия файлов
@@ -124,7 +128,7 @@ cat > "$VARIABLES_FILE" <<EOF
 }
 EOF
 
-echo "${GREEN}✅ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
+echo "${GREEN}✓ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
 
 # Этап 3: Валидация конфигурации Packer
 echo "${BLUE}🔧 Проверяем конфигурацию Packer...${NC}"
@@ -138,17 +142,23 @@ fi
 # Этап 4: Сборка образа
 echo "${YELLOW}🚀 Начинаем сборку образа...${NC}"
 
-IMAGE_NAME=$(packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" |
-  tee packer.log |
-  awk -F, '$3 == "artifact" && $5 == "id" { print $6 }')
+packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
+BUILD_PID=$!
+spinner $BUILD_PID
+wait $BUILD_PID
 
-if [[ -z "$IMAGE_NAME" ]]; then
+IMAGE_ID=$(yc compute image list --format=json | jq -r '.[0].id')
+
+if [[ -z "$IMAGE_ID" ]]; then
   echo "${RED}✗ Не удалось собрать образ. Проверьте логи (packer.log).${NC}"
   exit 1
 fi
 
-echo "${GREEN}✅ Образ собран: ${IMAGE_NAME}${NC}"
+echo "${GREEN}✓ Образ собран: ${IMAGE_ID}${NC}"
 
 # Завершение
-echo "${BLUE}⏳ Завершение процесса...${NC}"
-echo "${GREEN}✅ Все этапы успешно завершены.${NC}"
+if [ $? -eq 0 ]; then
+  echo "${GREEN}✓ Все этапы успешно завершены.${NC}"
+else
+  echo "${RED}✗ Сборка завершена с ошибкой.${NC}"
+fi
