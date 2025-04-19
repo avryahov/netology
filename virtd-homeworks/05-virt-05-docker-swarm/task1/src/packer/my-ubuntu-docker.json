@@ -2,15 +2,15 @@
   "builders": [
     {
       "type": "yandex",
-      "token": "{{ TOKEN }}",
-      "folder_id": "{{ FOLDER_ID }}",
-      "zone": "{{ DEFAULT_ZONE }}",
-      "image_name": "ubuntu-22-04-lts-docker",
+      "token": "{{user `TOKEN`}}",
+      "folder_id": "{{user `FOLDER_ID`}}",
+      "zone": "{{user `DEFAULT_ZONE`}}",
+      "image_name": "{{user `IMAGE_NAME`}}",
       "image_description": "my custom ubuntu with docker",
-      "source_image_family": "ubuntu-22-04-lts",
-      "subnet_id": "{{ SUBNET_ID }}",
+      "source_image_family": "ubuntu-2004-lts",
+      "subnet_id": "{{user `SUBNET_ID`}}",
       "use_ipv4_nat": true,
-      "disk_type": "{{ DISK_TYPE }}",
+      "disk_type": "{{user `DISK_TYPE`}}",
       "ssh_username": "ubuntu"
     }
   ],
