@@ -78,7 +78,7 @@ NEW_SUBNET_ID=$(yc vpc subnet create \
     --zone "$DEFAULT_ZONE" \
     --range "$NEW_SUBNET_IP_RANGE" \
     --format=json | jq -r '.id')
-echo "$(colorize "SUCCESS" "[INFO] Подсеть '${NEW_SUBNET_NAME}' успешно создана.")"
+echo "$(colorize "SUCCESS" "[SUCCESS] Подсеть '${NEW_SUBNET_NAME}' успешно создана.")"
 
 # Этап 4: Проверка наличия образа и инкрементация имени
 IMAGE_NAME="ubuntu-2004-lts-docker"
@@ -114,12 +114,12 @@ cat > "$VARIABLES_FILE" <<EOF
 }
 EOF
 
-echo "$(colorize "SUCCESS" "[INFO] Переменные для Packer записаны в $VARIABLES_FILE")"
+echo "$(colorize "SUCCESS" "[SUCCESS] Переменные для Packer записаны в $VARIABLES_FILE")"
 
 # Этап 6: Валидация конфигурации Packer
 echo "$(colorize "STEP" "[STEP 6] Проверяем конфигурацию Packer...")"
 if packer validate -var-file="$VARIABLES_FILE" "$CONFIG_FILE"; then
-    echo "$(colorize "SUCCESS" "[INFO] Конфигурация Packer валидна.")"
+    echo "$(colorize "SUCCESS" "[SUCCESS] Конфигурация Packer валидна.")"
 else
     echo "$(colorize "ERROR" "[ERROR] Ошибка валидации конфигурации Packer.")"
     exit 1
@@ -130,8 +130,24 @@ echo "$(colorize "INFO" "[INFO] Начинаем сборку образа...")"
 
 packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
 BUILD_PID=$!
+
+# Проверка, что PID был успешно получен
+if [[ -z "$BUILD_PID" ]]; then
+    echo "$(colorize "ERROR" "[ERROR] Не удалось получить PID процесса packer build. Проверьте логи (packer.log).")"
+    exit 1
+fi
+
+# Отладочный вывод
+echo "$(colorize "DEBUG" "[DEBUG] Запущен процесс packer build с PID: $BUILD_PID")"
+
 spinner_with_timer $BUILD_PID
 wait $BUILD_PID
+
+# Проверка кода завершения процесса
+if [[ $? -ne 0 ]]; then
+    echo "$(colorize "ERROR" "[ERROR] Процесс packer build завершился с ошибкой. Проверьте логи (packer.log).")"
+    exit 1
+fi
 
 IMAGE_ID=$(yc compute image list --format=json | jq -r --arg name "$NEW_IMAGE_NAME" '.[] | select(.name == $name) | .id')
 
@@ -140,19 +156,27 @@ if [[ -z "$IMAGE_ID" ]]; then
     exit 1
 fi
 
-echo "$(colorize "SUCCESS" "[INFO] Образ собран: ${IMAGE_ID}")"
+echo "$(colorize "SUCCESS" "[SUCCESS] Образ собран: ${IMAGE_ID}")"
 
 # Удаление ресурсов только в pre-prod
 if [[ "$MODE" == "pre-prod" ]]; then
-# Этап 8: Удаление нового образа
-    echo "$(colorize "INFO" "[INFO] Удаляем новый образ (${NEW_IMAGE_NAME})...")"
-    yc compute image delete --id "$IMAGE_ID"
-    echo "$(colorize "SUCCESS" "[INFO] Новый образ удален.")"
+    # Этап 8: Удаление нового образа
+    EXISTING_IMAGE=$(yc compute image list --format=json | jq -r --arg id "$IMAGE_ID" '.[] | select(.id == $id) | .name')
+    if [[ -z "$EXISTING_IMAGE" ]]; then
+        echo "$(colorize "WARN" "[WARN] Образ с ID '$IMAGE_ID' не найден. Пропускаем удаление.")"
+    else
+        yc compute image delete --id "$IMAGE_ID"
+        echo "$(colorize "SUCCESS" "[SUCCESS] Новый образ удален.")"
+    fi
 
     # Этап 9: Удаление новой подсети
-    echo "$(colorize "INFO" "[INFO] Удаляем новую подсеть (${NEW_SUBNET_NAME})...")"
-    yc vpc subnet delete --id "$NEW_SUBNET_ID"
-    echo "$(colorize "SUCCESS" "[INFO] Новая подсеть удалена.")"
+    EXISTING_SUBNET=$(yc vpc subnet get "$NEW_SUBNET_ID" --format=json 2>/dev/null)
+    if [[ -z "$EXISTING_SUBNET" ]]; then
+        echo "$(colorize "WARN" "[WARN] Подсеть с ID '$NEW_SUBNET_ID' не найдена. Пропускаем удаление.")"
+    else
+        yc vpc subnet delete --id "$NEW_SUBNET_ID"
+        echo "$(colorize "SUCCESS" "[SUCCESS] Новая подсеть удалена.")"
+    fi
 else
     # Обновляем variables.json с новым полем IMAGE_ID
     jq --arg id "$IMAGE_ID" '. + {IMAGE_ID: $id}' "$VARIABLES_FILE" > "${VARIABLES_FILE}.tmp" && mv "${VARIABLES_FILE}.tmp" "$VARIABLES_FILE"
@@ -165,4 +189,5 @@ if [ $? -eq 0 ]; then
     echo "$(colorize "SUCCESS" "[DONE] Подготовка завершена. Mode: $MODE")"
 else
     echo "$(colorize "ERROR" "[ERROR] Сборка завершена с ошибкой.")"
+    exit 1
 fi

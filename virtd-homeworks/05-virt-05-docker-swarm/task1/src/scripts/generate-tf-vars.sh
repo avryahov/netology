@@ -41,13 +41,13 @@ cloud_id          = "$CLOUD_ID"
 folder_id         = "$FOLDER_ID"
 subnet_id         = "$SUBNET_ID"
 vms_ssh_root_key  = "$SSH_KEY"
-vm_image_id               = "$IMAGE_ID"
+vm_image_id       = "$IMAGE_ID"
 EOF
 
 cat > "$VARS_FILE" <<EOF
 default_zone          = "$DEFAULT_ZONE"
 
-vm_node_family            = "$IMAGE_FAMILY"
+vm_node_family        = "$IMAGE_FAMILY"
 vm_node_count         = 3
 vm_node_name_prefix   = "node"
 vm_node_disk_size     = 10
