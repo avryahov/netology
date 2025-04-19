@@ -132,11 +132,11 @@ count_images_with_prefix() {
 # Проверяем, существует ли образ с базовым именем IMAGE_NAME
 if echo "$EXISTING_IMAGES" | grep -q "^$IMAGE_NAME\$"; then
   echo "${YELLOW}⚠️ Образ с именем '${IMAGE_NAME}' уже существует.${NC}"
-
+  
   # Считаем количество образов с префиксом IMAGE_NAME
   IMAGE_COUNT=$(count_images_with_prefix "$IMAGE_NAME")
   NEW_IMAGE_NAME="${IMAGE_NAME}_$((IMAGE_COUNT + 1))"
-
+  
   echo "${YELLOW}💡 Генерируем новое имя образа: '${NEW_IMAGE_NAME}'.${NC}"
 else
   NEW_IMAGE_NAME="$IMAGE_NAME"
@@ -167,7 +167,7 @@ EOF
 echo "${GREEN}✓ Переменные для Packer записаны в $VARIABLES_FILE${NC}"
 
 # Этап 5: Валидация конфигурации Packer
-echo "${BLUE}🔧 Проверяем конфигурацию Packer...${NC}"
+echo "${BLUE}⚙️ Проверяем конфигурацию Packer...${NC}"
 if packer validate -var-file="$VARIABLES_FILE" "$CONFIG_FILE"; then
   echo "${GREEN}✓ Конфигурация Packer валидна.${NC}"
 else
@@ -176,7 +176,7 @@ else
 fi
 
 # Этап 6: Сборка образа
-echo "${YELLOW}🚀 Начинаем сборку образа...${NC}"
+printf "${YELLOW}🚀 Начинаем сборку образа... ${NC}"  # Выводим сообщение без перевода строки
 
 packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
 BUILD_PID=$!
