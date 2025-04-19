@@ -47,58 +47,65 @@ echo "$(colorize "INFO" "FOLDER_ID:            $(log_masked "$FOLDER_ID")")"
 echo "$(colorize "INFO" "CLOUD_ID:             $(log_masked "$CLOUD_ID")")"
 echo "$(colorize "INFO" "NETWORK_ID:           $(log_masked "$NETWORK_ID")")"
 
-# Этап 3: Проверка наличия подсети и генерация нового имени
+# Этап 3: Обработка подсети
 echo "$(colorize "STEP" "[STEP 3] Обработка подсети...")"
 EXISTING_SUBNETS=$(yc vpc subnet list --format=json | jq -r '.[] | "\(.name) \(.v4_cidr_blocks[0])"')
 
-if echo "$EXISTING_SUBNETS" | grep -q "^$SUBNET_NAME "; then
-    echo "$(colorize "WARN" "[WARN] Подсеть с именем '${SUBNET_NAME}' уже существует.")"
+if [[ "$MODE" == "prod" ]]; then
+    # В prod-режиме используем существующую подсеть, если она есть
+    if echo "$EXISTING_SUBNETS" | grep -q "^$SUBNET_NAME "; then
+        NEW_SUBNET_NAME="$SUBNET_NAME"
+        NEW_SUBNET_IP_RANGE=$(echo "$EXISTING_SUBNETS" | grep "^$SUBNET_NAME " | awk '{print $2}')
+        NEW_SUBNET_ID=$(yc vpc subnet get "$NEW_SUBNET_NAME" --format=json | jq -r '.id')
+        echo "$(colorize "INFO" "[INFO] Подсеть '${NEW_SUBNET_NAME}' уже существует. Будет использована существующая подсеть.")"
+    else
+        NEW_SUBNET_NAME="$SUBNET_NAME"
+        NEW_SUBNET_IP_RANGE=$(generate_unique_ip_range "$EXISTING_SUBNETS")
+        echo "$(colorize "INFO" "[INFO] Подсеть '${NEW_SUBNET_NAME}' не найдена. Создаем новую подсеть с IP-диапазоном '${NEW_SUBNET_IP_RANGE}'.")"
+        NEW_SUBNET_ID=$(yc vpc subnet create \
+            --name "$NEW_SUBNET_NAME" \
+            --network-id "$NETWORK_ID" \
+            --zone "$DEFAULT_ZONE" \
+            --range "$NEW_SUBNET_IP_RANGE" \
+            --format=json | jq -r '.id')
+        echo "$(colorize "SUCCESS" "[SUCCESS] Подсеть '${NEW_SUBNET_NAME}' успешно создана.")"
+    fi
+else
+    # В pre-prod режиме всегда создаем новую подсеть
     SUBNET_COUNT=$(count_subnets_with_prefix "$SUBNET_NAME" "$EXISTING_SUBNETS")
     NEW_SUBNET_NAME="${SUBNET_NAME}_$((SUBNET_COUNT + 1))"
-    echo "$(colorize "INFO" "[INFO] Генерируем новое имя подсети: '${NEW_SUBNET_NAME}'.")"
-else
-    NEW_SUBNET_NAME="$SUBNET_NAME"
-    echo "$(colorize "INFO" "[INFO] Подсеть с именем '${SUBNET_NAME}' не найдена. Будет использовано имя '${NEW_SUBNET_NAME}'.")"
+    NEW_SUBNET_IP_RANGE=$(generate_unique_ip_range "$EXISTING_SUBNETS")
+    echo "$(colorize "INFO" "[INFO] Генерируем новое имя подсети: '${NEW_SUBNET_NAME}' с IP-диапазоном '${NEW_SUBNET_IP_RANGE}'.")"
+    NEW_SUBNET_ID=$(yc vpc subnet create \
+        --name "$NEW_SUBNET_NAME" \
+        --network-id "$NETWORK_ID" \
+        --zone "$DEFAULT_ZONE" \
+        --range "$NEW_SUBNET_IP_RANGE" \
+        --format=json | jq -r '.id')
+    echo "$(colorize "SUCCESS" "[SUCCESS] Подсеть '${NEW_SUBNET_NAME}' успешно создана.")"
 fi
 
-NEW_SUBNET_IP_RANGE=$(generate_unique_ip_range "$EXISTING_SUBNETS")
-echo "$(colorize "INFO" "[INFO] Генерируем уникальный IP-диапазон: '${NEW_SUBNET_IP_RANGE}'.")"
-
-if echo "$EXISTING_SUBNETS" | grep -q "^$NEW_SUBNET_NAME "; then
-    echo "$(colorize "ERROR" "[ERROR] Имя '${NEW_SUBNET_NAME}' уже занято. Возможна коллизия.")"
-    exit 1
-else
-    echo "$(colorize "INFO" "[INFO] Имя '${NEW_SUBNET_NAME}' свободно для использования.")"
-fi
-
-echo "$(colorize "INFO" "[INFO] Создание подсети '${NEW_SUBNET_NAME}' с IP-диапазоном '${NEW_SUBNET_IP_RANGE}'...")"
-NEW_SUBNET_ID=$(yc vpc subnet create \
-    --name "$NEW_SUBNET_NAME" \
-    --network-id "$NETWORK_ID" \
-    --zone "$DEFAULT_ZONE" \
-    --range "$NEW_SUBNET_IP_RANGE" \
-    --format=json | jq -r '.id')
-echo "$(colorize "SUCCESS" "[SUCCESS] Подсеть '${NEW_SUBNET_NAME}' успешно создана.")"
-
-# Этап 4: Проверка наличия образа и инкрементация имени
+# Этап 4: Обработка образа
 IMAGE_NAME="ubuntu-2004-lts-docker"
 EXISTING_IMAGES=$(yc compute image list --format=json | jq -r '.[].name')
 
-if echo "$EXISTING_IMAGES" | grep -q "^$IMAGE_NAME\$"; then
-    echo "$(colorize "WARN" "[WARN] Образ с именем '${IMAGE_NAME}' уже существует.")"
+if [[ "$MODE" == "prod" ]]; then
+    # В prod-режиме используем существующий образ, если он есть
+    if echo "$EXISTING_IMAGES" | grep -q "^$IMAGE_NAME\$"; then
+        NEW_IMAGE_NAME="$IMAGE_NAME"
+        IMAGE_ID=$(yc compute image list --format=json | jq -r --arg name "$NEW_IMAGE_NAME" '.[] | select(.name == $name) | .id')
+        echo "$(colorize "INFO" "[INFO] Образ '${NEW_IMAGE_NAME}' уже существует. Будет использован существующий образ.")"
+    else
+        NEW_IMAGE_NAME="$IMAGE_NAME"
+        echo "$(colorize "INFO" "[INFO] Образ '${NEW_IMAGE_NAME}' не найден. Будет создан новый образ.")"
+        IMAGE_ID=""
+    fi
+else
+    # В pre-prod режиме всегда создаем новый образ
     IMAGE_COUNT=$(count_images_with_prefix "$IMAGE_NAME" "$EXISTING_IMAGES")
     NEW_IMAGE_NAME="${IMAGE_NAME}_$((IMAGE_COUNT + 1))"
     echo "$(colorize "INFO" "[INFO] Генерируем новое имя образа: '${NEW_IMAGE_NAME}'.")"
-else
-    NEW_IMAGE_NAME="$IMAGE_NAME"
-    echo "$(colorize "INFO" "[INFO] Образ с именем '${IMAGE_NAME}' не найден. Будет использовано имя '${NEW_IMAGE_NAME}'.")"
-fi
-
-if echo "$EXISTING_IMAGES" | grep -q "^$NEW_IMAGE_NAME\$"; then
-    echo "$(colorize "ERROR" "[ERROR] Имя '${NEW_IMAGE_NAME}' уже занято. Возможна коллизия.")"
-    exit 1
-else
-    echo "$(colorize "INFO" "[INFO] Имя '${NEW_IMAGE_NAME}' свободно для использования.")"
+    IMAGE_ID=""
 fi
 
 # Этап 5: Запись переменных в файл
@@ -125,37 +132,34 @@ else
 fi
 
 # Этап 7: Сборка образа
-echo "$(colorize "INFO" "[INFO] Начинаем сборку образа...")"
-
-packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
-BUILD_PID=$!
-
-# Проверка, что PID был успешно получен
-if [[ -z "$BUILD_PID" ]]; then
-    echo "$(colorize "ERROR" "[ERROR] Не удалось получить PID процесса packer build. Проверьте логи (packer.log).")"
-    exit 1
-fi
-
-# Отладочный вывод
-echo "$(colorize "DEBUG" "[DEBUG] Запущен процесс packer build с PID: $BUILD_PID")"
-
-spinner_with_timer $BUILD_PID
-wait $BUILD_PID
-
-# Проверка кода завершения процесса
-if [[ $? -ne 0 ]]; then
-    echo "$(colorize "ERROR" "[ERROR] Процесс packer build завершился с ошибкой. Проверьте логи (packer.log).")"
-    exit 1
-fi
-
-IMAGE_ID=$(yc compute image list --format=json | jq -r --arg name "$NEW_IMAGE_NAME" '.[] | select(.name == $name) | .id')
-
 if [[ -z "$IMAGE_ID" ]]; then
-    echo "$(colorize "ERROR" "[ERROR] Не удалось собрать образ. Проверьте логи (packer.log).")"
-    exit 1
-fi
+    echo "$(colorize "INFO" "[INFO] Начинаем сборку образа...")"
 
-echo "$(colorize "SUCCESS" "[SUCCESS] Образ собран: ${IMAGE_ID}")"
+    packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
+    BUILD_PID=$!
+
+    # Отладочный вывод
+    echo "$(colorize "DEBUG" "[DEBUG] Запущен процесс packer build с PID: $BUILD_PID")"
+
+    spinner_with_timer $BUILD_PID
+    wait $BUILD_PID
+
+    if [[ $? -ne 0 ]]; then
+        echo "$(colorize "ERROR" "[ERROR] Процесс packer build завершился с ошибкой. Проверьте логи (packer.log).")"
+        exit 1
+    fi
+
+    IMAGE_ID=$(yc compute image list --format=json | jq -r --arg name "$NEW_IMAGE_NAME" '.[] | select(.name == $name) | .id')
+
+    if [[ -z "$IMAGE_ID" ]]; then
+        echo "$(colorize "ERROR" "[ERROR] Не удалось собрать образ. Проверьте логи (packer.log).")"
+        exit 1
+    fi
+
+    echo "$(colorize "SUCCESS" "[SUCCESS] Образ собран: ${IMAGE_ID}")"
+else
+    echo "$(colorize "INFO" "[INFO] Используется существующий образ: ${IMAGE_ID}")"
+fi
 
 # Удаление ресурсов только в pre-prod
 if [[ "$MODE" == "pre-prod" ]]; then
