@@ -16,19 +16,23 @@ DEFAULT_ZONE="ru-central1-a"
 SUBNET_NAME="develop"
 DISK_TYPE="network-hdd"
 
-# Простой спиннер для отображения во время длительных задач
-spinner() {
+# Простой спиннер с отсчетом времени
+spinner_with_timer() {
   local pid=$1
   local delay=0.1
   local spinstr='|/-\'
+  local start_time=$(date +%s)
+  local elapsed=0
 
   while ps -p $pid > /dev/null; do
     local current_char=${spinstr:0:1}
-    printf "[%c]\b\b\b" "$current_char"
+    printf "%c %ds \r" "$current_char" "$elapsed"
     spinstr=${spinstr:1}${spinstr:0:1}
     sleep $delay
+    elapsed=$(( $(date +%s) - start_time ))
   done
-  printf "    \b\b\b\b"
+
+  printf "\ndone (%ds)\n" "$elapsed"
 }
 
 # Функция для маскирования значений (выводим только последние 4 символа)
@@ -224,11 +228,11 @@ else
 fi
 
 # Этап 7: Сборка образа
-printf "${YELLOW}🚀 Начинаем сборку образа... ${NC}"  # Выводим сообщение без перевода строки
+echo "${YELLOW}🚀 Начинаем сборку образа...${NC}"  # Перевод строки после сообщения
 
 packer build -var-file="$VARIABLES_FILE" -machine-readable "$CONFIG_FILE" > packer.log 2>&1 &
 BUILD_PID=$!
-spinner $BUILD_PID
+spinner_with_timer $BUILD_PID
 wait $BUILD_PID
 
 # Получаем ID нового образа
