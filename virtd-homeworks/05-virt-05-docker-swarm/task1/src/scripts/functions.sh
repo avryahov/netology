@@ -92,7 +92,7 @@ check() {
 count_subnets_with_prefix() {
   local prefix=$1
   local existing_subnets=$2
-  echo "$existing_subnets" | grep -E "^${prefix}_[0-9]+$" | wc -l
+  echo "$existing_subnets" | grep -E "^${prefix}(_[0-9]+)? " | wc -l
 }
 
 # Функция для генерации уникального IP-диапазона
@@ -116,5 +116,5 @@ generate_unique_ip_range() {
 count_images_with_prefix() {
     local prefix=$1
     local existing_images=$2
-    echo "$existing_images" | grep -E "^${prefix}_[0-9]+$" | wc -l
+    echo "$existing_images" | grep -E "^${prefix}(_[0-9]+)?$" | wc -l
 }
