@@ -27,7 +27,6 @@ TOKEN=$(jq -r '.TOKEN' "$VARIABLES_JSON")
 FOLDER_ID=$(jq -r '.FOLDER_ID' "$VARIABLES_JSON")
 CLOUD_ID=$(yc config get cloud-id)  # Опционально
 SUBNET_ID=$(jq -r '.SUBNET_ID' "$VARIABLES_JSON")
-IMAGE_FAMILY=$(jq -r '.IMAGE_FAMILY' "$VARIABLES_JSON")
 IMAGE_ID=$(jq -r '.IMAGE_ID' "$VARIABLES_JSON")
 DEFAULT_ZONE=$(jq -r '.DEFAULT_ZONE' "$VARIABLES_JSON")
 
@@ -44,7 +43,6 @@ EOF
 cat > "$VARS_FILE" <<EOF
 default_zone          = "$DEFAULT_ZONE"
 
-vm_node_family        = "$IMAGE_FAMILY"
 vm_node_count         = 4
 vm_node_name_prefix   = "node"
 vm_node_disk_size     = 10

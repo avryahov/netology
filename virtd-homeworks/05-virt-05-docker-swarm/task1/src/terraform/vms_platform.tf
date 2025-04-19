@@ -1,10 +1,4 @@
 ###vm vars
-variable "vm_node_family" {
-  description = "The family of yandex compute images"
-  type        = string
-  default     = "ubuntu-22-04-lts"
-}
-
 variable "vm_node_platform_id" {
   description = "The platform identifier of the yandex compute instance"
   type        = string

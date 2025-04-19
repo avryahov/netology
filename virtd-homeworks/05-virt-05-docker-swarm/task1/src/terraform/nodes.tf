@@ -1,7 +1,3 @@
-data "yandex_compute_image" "ubuntu" {
-  family = var.vm_node_family
-}
-
 resource "yandex_compute_instance" "node" {
   count = var.vm_node_count
 
@@ -17,7 +13,7 @@ resource "yandex_compute_instance" "node" {
 
   boot_disk {
     initialize_params {
-      image_id = data.yandex_compute_image.ubuntu.id
+      image_id = var.vm_image_id
       size     = var.vm_node_disk_size
     }
   }
