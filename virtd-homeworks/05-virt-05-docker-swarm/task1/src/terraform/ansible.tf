@@ -1,38 +1,21 @@
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/inventory.tftpl", {
-    webservers = [
-      for vm in yandex_compute_instance.web :
+    nodes = [
+      for vm in yandex_compute_instance.node :
       {
         name              = vm.name
         fqdn              = vm.fqdn
         network_interface = vm.network_interface
-      }
-    ]
-    databases = [
-      for vm in yandex_compute_instance.db :
-      {
-        name              = vm.name
-        fqdn              = vm.fqdn
-        network_interface = vm.network_interface
-      }
-    ]
-    storage = [
-      {
-        name              = yandex_compute_instance.storage.name
-        fqdn              = yandex_compute_instance.storage.fqdn
-        network_interface = yandex_compute_instance.storage.network_interface
       }
     ]
   })
 
-  filename = "${path.module}/hosts.ini"
+  filename = var.ansible_inventory_file
 }
 
 resource "null_resource" "ansible_provision" {
   depends_on = [
-    yandex_compute_instance.web,
-    yandex_compute_instance.db,
-    yandex_compute_instance.storage,
+    yandex_compute_instance.node,
     local_file.ansible_inventory
   ]
 

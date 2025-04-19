@@ -27,7 +27,7 @@ resource "yandex_compute_instance" "node" {
   }
 
   network_interface {
-    subnet_id = var.vm_image_id
+    subnet_id = var.subnet_id
     nat       = var.vm_node_network_interface_nat
   }
 
