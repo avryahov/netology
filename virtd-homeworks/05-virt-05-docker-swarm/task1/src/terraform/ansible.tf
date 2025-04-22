@@ -40,7 +40,7 @@ resource "null_resource" "ansible_provision" {
   }
 
   provisioner "local-exec" {
-    command    = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ${var.ansible_inventory_file} ${var.ansible_playbook_file}"
+    command    = "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ${var.ansible_inventory_file} -e docker_subnet=${var.docker_subnet}  ${var.ansible_playbook_file}"
     on_failure = continue
     environment = {
       ANSIBLE_HOST_KEY_CHECKING = "False"

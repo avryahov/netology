@@ -11,6 +11,11 @@
       - node-2
       - node-3
     portainer_node: node-1
+    project_name: mystack
+    project_dir: /opt/shvirtd-example-python
+    local_project_path: "{{ ansible_user_dir }}/repositories/git/study/shvirtd-example-python"
+    db_ip: "{{ docker_subnet | regex_replace('/\\d+$', '') }}10"
+    web_ip: "{{ docker_subnet | regex_replace('/\\d+$', '') }}5"
 
   pre_tasks:
     - name: Validate SSH connectivity to all nodes
@@ -32,6 +37,11 @@
       ansible.builtin.fail:
         msg: "Docker is not installed on {{ inventory_hostname }}."
       when: docker_version.rc != 0
+
+    - name: Validate Docker Swarm subnet
+      ansible.builtin.debug:
+        msg: "Docker subnet is: {{ docker_subnet }}"
+      run_once: true
 
     - name: Log Docker version  # noqa run-once
       ansible.builtin.debug:
@@ -97,8 +107,8 @@
 
     - name: Check if Portainer service is running # noqa run-once
       ansible.builtin.shell: >
-        docker inspect -f '{% raw %}{{ .State.Running }}{% endraw %}' portainer || echo "false"
-        delegate_to: "{{ portainer_node }}"
+        docker service inspect portainer --format '{{ "{{ .Spec.Name }}" }}' || echo "false"
+      delegate_to: "{{ portainer_node }}"
       register: portainer_status
       changed_when: false
       run_once: true
@@ -113,7 +123,7 @@
         --mount type=volume,src=portainer_data,dst=/data
         portainer/portainer-ce:latest
       delegate_to: "{{ portainer_node }}"
-      when: portainer_status.stdout != "true"
+      when: portainer_status.stdout != "portainer"
       changed_when: false
       run_once: true
 
@@ -121,3 +131,103 @@
       ansible.builtin.debug:
         msg: "Docker Swarm cluster configured. Manager: {{ manager_node }}, Workers: {{ worker_nodes }}, Portainer: {{ portainer_node }}"
       run_once: true
+
+    # PROJECT COPY TO HOST
+
+    - name: Create project directory on the manager node # noqa run-once
+      ansible.builtin.file:
+        path: "{{ project_dir }}"
+        state: directory
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    - name: Copy project files to the manager node # noqa run-once
+      ansible.posix.synchronize:
+        src: "{{ local_project_path }}/."
+        dest: "{{ project_dir }}"
+        recursive: true
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    # REPLACE IP-ADDRESSES INTO compose.yml
+    - name: Replace subnet in compose.yml  # noqa run-once
+      ansible.builtin.replace:
+        path: "{{ project_dir }}/compose.yml"
+        regexp: 'subnet: 172.20.0.0/24'
+        replace: 'subnet: {{ docker_subnet }}'
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    - name: Replace DB IP in compose.yml # noqa run-once
+      ansible.builtin.replace:
+        path: "{{ project_dir }}/compose.yml"
+        regexp: 'ipv4_address: 172.20.0.10'
+        replace: 'ipv4_address: {{ db_ip }}'
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    - name: Replace Web IP in compose.yml # noqa run-once
+      ansible.builtin.replace:
+        path: "{{ project_dir }}/compose.yml"
+        regexp: 'ipv4_address: 172.20.0.5'
+        replace: 'ipv4_address: {{ web_ip }}'
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    # REPLACE IP-ADDRESSES INTO proxy.yaml
+    - name: Replace subnet in proxy.yaml # noqa run-once
+      ansible.builtin.replace:
+        path: "{{ project_dir }}/proxy.yaml"
+        regexp: 'subnet: 172.20.0.0/24'
+        replace: 'subnet: {{ docker_subnet }}'
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    - name: Verify changes in compose.yml # noqa run-once
+      ansible.builtin.shell: >
+        cat "{{ project_dir }}/compose.yml"
+      delegate_to: "{{ manager_node }}"
+      register: compose_content
+      run_once: true
+
+    - name: Display updated compose.yml # noqa run-once
+      ansible.builtin.debug:
+        msg: "{{ compose_content.stdout }}"
+      run_once: true
+
+    - name: Verify changes in proxy.yaml # noqa run-once
+      ansible.builtin.shell: >
+        cat "{{ project_dir }}/proxy.yaml"
+      delegate_to: "{{ manager_node }}"
+      register: proxy_content
+      run_once: true
+
+    - name: Display updated proxy.yaml # noqa run-once
+      ansible.builtin.debug:
+        msg: "{{ proxy_content.stdout }}"
+      run_once: true
+
+    # PROJECT DEPLOYMENT
+
+    - name: Create custom overlay network (if not exists) # noqa run-once
+      ansible.builtin.shell: >
+        docker network create --driver overlay --subnet={{ docker_subnet }} backend || true
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    - name: Deploy the stack using compose.yml # noqa run-once
+      ansible.builtin.shell: >
+        cd {{ project_dir }} &&
+        docker stack deploy -c compose.yml {{ project_name }}
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
+    - name: Verify stack deployment # noqa run-once
+      ansible.builtin.shell: docker stack ps {{ project_name }}
+      delegate_to: "{{ manager_node }}"
+      register: stack_status
+      run_once: true
+
+    - name: Display stack deployment status
+      ansible.builtin.debug:
+        msg: "{{ stack_status.stdout }}"

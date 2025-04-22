@@ -25,6 +25,11 @@ variable "subnet_id" {
   description = "VPC subnet network"
 }
 
+variable "docker_subnet" {
+  type        = string
+  description = "Docker subnet network"
+}
+
 ###ansible vars
 variable "ansible_inventory_file" {
   description = "Path to the rendered ansible inventory file"

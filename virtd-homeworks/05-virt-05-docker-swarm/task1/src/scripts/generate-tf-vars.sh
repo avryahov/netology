@@ -29,6 +29,7 @@ CLOUD_ID=$(yc config get cloud-id)  # Опционально
 SUBNET_ID=$(jq -r '.SUBNET_ID' "$VARIABLES_JSON")
 IMAGE_ID=$(jq -r '.IMAGE_ID' "$VARIABLES_JSON")
 DEFAULT_ZONE=$(jq -r '.DEFAULT_ZONE' "$VARIABLES_JSON")
+DOCKER_SUBNET=$(jq -r '.DOCKER_SUBNET' "$VARIABLES_JSON")
 
 # Генерация файлов переменных
 cat > "$PERSONAL_VARS_FILE" <<EOF
@@ -42,6 +43,7 @@ EOF
 
 cat > "$VARS_FILE" <<EOF
 default_zone          = "$DEFAULT_ZONE"
+docker_subnet         = "$DOCKER_SUBNET"
 
 vm_node_count         = 3
 vm_node_name_prefix   = "node"

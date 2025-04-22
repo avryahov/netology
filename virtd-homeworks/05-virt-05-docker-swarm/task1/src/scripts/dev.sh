@@ -85,6 +85,10 @@ else
     echo "$(colorize "SUCCESS" "[SUCCESS] Подсеть '${NEW_SUBNET_NAME}' успешно создана.")"
 fi
 
+# Генерация подсети для Docker Swarm
+DOCKER_SUBNET=$(generate_unique_ip_range "$EXISTING_SUBNETS $NEW_SUBNET_IP_RANGE")
+echo "$(colorize "INFO" "[INFO] Подсеть для Docker Swarm: ${DOCKER_SUBNET}")"
+
 # Этап 4: Обработка образа
 IMAGE_NAME="ubuntu-2004-lts-docker"
 EXISTING_IMAGES=$(yc compute image list --format=json | jq -r '.[].name')
@@ -116,7 +120,8 @@ cat > "$VARIABLES_FILE" <<EOF
   "DEFAULT_ZONE": "$DEFAULT_ZONE",
   "SUBNET_ID": "$NEW_SUBNET_ID",
   "DISK_TYPE": "$DISK_TYPE",
-  "IMAGE_NAME": "$NEW_IMAGE_NAME"
+  "IMAGE_NAME": "$NEW_IMAGE_NAME",
+  "DOCKER_SUBNET": "$DOCKER_SUBNET"
 }
 EOF
 
