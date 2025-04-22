@@ -152,6 +152,8 @@
         - { src: "nginx/ingress/nginx.conf", dest: "nginx/ingress/nginx.conf" }
         - { src: ".env", dest: ".env" }
       run_once: true
+      vars:
+        ansible_python_interpreter: "/opt/homebrew/bin/python3"
 
     # Сборка Docker-образа для сервиса web
     - name: Build Docker image for web service  # noqa run-once
@@ -202,14 +204,4 @@
     - name: Display stack deployment status  # noqa run-once
       ansible.builtin.debug:
         msg: "{{ stack_status.stdout }}"
-      run_once: true
-
-    - name: Wait for database to be healthy  # noqa run-once
-      ansible.builtin.wait_for:
-        host: "{{ db_ip }}"
-        port: 3306
-        delay: 10
-        timeout: 300
-        state: started
-      delegate_to: "{{ manager_node }}"
       run_once: true
