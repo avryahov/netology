@@ -1,3 +1,4 @@
+---
 - name: Configure Docker Swarm Cluster with Portainer
   hosts: nodes
   gather_facts: false
@@ -18,6 +19,7 @@
     web_ip: "{{ docker_subnet | regex_replace('/\\d+$', '') }}5"
 
   pre_tasks:
+    # Проверка SSH-подключения ко всем узлам
     - name: Validate SSH connectivity to all nodes
       ansible.builtin.wait_for:
         host: '{{ (ansible_ssh_host | default(ansible_host)) | default(inventory_hostname) }}'
@@ -27,6 +29,7 @@
         state: started
         search_regex: OpenSSH
 
+    # Проверка наличия Docker
     - name: Check if Docker is installed
       ansible.builtin.shell: docker --version
       register: docker_version
@@ -38,6 +41,7 @@
         msg: "Docker is not installed on {{ inventory_hostname }}."
       when: docker_version.rc != 0
 
+    # Вывод информации о подсети Docker
     - name: Validate Docker Swarm subnet
       ansible.builtin.debug:
         msg: "Docker subnet is: {{ docker_subnet }}"
@@ -48,6 +52,7 @@
         msg: "Docker is installed on {{ inventory_hostname }}: {{ docker_version.stdout }}"
 
   tasks:
+    # Настройка Docker Swarm
     - name: Check if manager is in active swarm  # noqa run-once
       ansible.builtin.shell: docker info --format '{{ "{{ .Swarm.LocalNodeState }}" }}'
       delegate_to: "{{ manager_node }}"
@@ -99,6 +104,7 @@
       changed_when: false
       ignore_errors: true
 
+    # Настройка Portainer
     - name: Check if Portainer service is running  # noqa run-once
       ansible.builtin.shell: >
         docker service inspect portainer --format '{{ "{{ .Spec.Name }}" }}' || echo "false"
@@ -121,76 +127,63 @@
       changed_when: false
       run_once: true
 
-    - name: Log Docker Swarm cluster setup completion  # noqa run-once
-      ansible.builtin.debug:
-        msg: "Docker Swarm cluster configured. Manager: {{ manager_node }}, Workers: {{ worker_nodes }}, Portainer: {{ portainer_node }}"
-      run_once: true
-
-    - name: Create project directory on the manager node  # noqa run-once
+    # Развертывание проекта
+    - name: Create project directory on the manager node
       ansible.builtin.file:
         path: "{{ project_dir }}"
         state: directory
+        mode: '0755'
       delegate_to: "{{ manager_node }}"
       run_once: true
 
-    - name: Debug local project path  # noqa run-once
-      debug:
-        msg: "local_project_path={{ local_project_path }}"
-      run_once: true
-
-    - name: Copy project files to the manager node  # noqa run-once
+    - name: Copy essential project files to the manager node  # noqa run-once
       ansible.posix.synchronize:
-        src: "{{ local_project_path }}/."
-        dest: "{{ project_dir }}"
-        recursive: true
+        src: "{{ local_project_path }}/{{ item.src }}"
+        dest: "{{ project_dir }}/{{ item.dest | default(item.src) }}"
       delegate_to: localhost
       become: false
-      run_once: true
-      vars:
-        ansible_python_interpreter: /opt/homebrew/bin/python3
-
-    - name: Replace subnet in compose.stack.yaml  # noqa run-once
-      ansible.builtin.replace:
-        path: "{{ project_dir }}/compose.stack.yaml"
-        regexp: 'subnet: 172.20.0.0/24'
-        replace: 'subnet: {{ docker_subnet }}'
-      delegate_to: "{{ manager_node }}"
-      run_once: true
-
-    - name: Replace DB IP in compose.stack.yaml  # noqa run-once
-      ansible.builtin.replace:
-        path: "{{ project_dir }}/compose.stack.yaml"
-        regexp: 'ipv4_address: 172.20.0.10'
-        replace: 'ipv4_address: {{ db_ip }}'
-      delegate_to: "{{ manager_node }}"
+      loop:
+        - { src: "Dockerfile.python" }
+        - { src: "compose.stack.yaml" }
+        - { src: "main.py" }
+        - { src: "requirements.txt" }
+        - { src: "haproxy/reverse/haproxy.cfg", dest: "haproxy/reverse/haproxy.cfg" }
+        - { src: "nginx/ingress/default.conf", dest: "nginx/ingress/default.conf" }
+        - { src: "nginx/ingress/nginx.conf", dest: "nginx/ingress/nginx.conf" }
+        - { src: ".env", dest: ".env" }
       run_once: true
 
-    - name: Replace Web IP in compose.stack.yaml  # noqa run-once
-      ansible.builtin.replace:
-        path: "{{ project_dir }}/compose.stack.yaml"
-        regexp: 'ipv4_address: 172.20.0.5'
-        replace: 'ipv4_address: {{ web_ip }}'
-      delegate_to: "{{ manager_node }}"
-      run_once: true
-
-    - name: Replace subnet in compose.stack.yaml  # noqa run-once
-      ansible.builtin.replace:
-        path: "{{ project_dir }}/compose.stack.yaml"
-        regexp: 'subnet: 172.20.0.0/24'
-        replace: 'subnet: {{ docker_subnet }}'
-      delegate_to: "{{ manager_node }}"
-      run_once: true
-
-    - name: Verify changes in compose.stack.yaml  # noqa run-once
+    # Сборка Docker-образа для сервиса web
+    - name: Build Docker image for web service  # noqa run-once
       ansible.builtin.shell: >
-        cat "{{ project_dir }}/compose.stack.yaml"
+        docker build
+        -t shvirtd-example-python:latest
+        -f {{ project_dir }}/Dockerfile.python
+        {{ project_dir }}
       delegate_to: "{{ manager_node }}"
-      register: compose_content
       run_once: true
 
-    - name: Display updated compose.stack.yaml  # noqa run-once
-      ansible.builtin.debug:
-        msg: "{{ compose_content.stdout }}"
+    - name: Update IPs and subnet in compose.stack.yaml  # noqa run-once
+      ansible.builtin.replace:
+        path: "{{ project_dir }}/compose.stack.yaml"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      delegate_to: "{{ manager_node }}"
+      loop:
+        - { regexp: 'subnet: 172.20.0.0/24', replace: 'subnet: {{ docker_subnet }}' }
+        - { regexp: 'ipv4_address: 172.20.0.10', replace: 'ipv4_address: {{ db_ip }}' }
+        - { regexp: 'ipv4_address: 172.20.0.5', replace: 'ipv4_address: {{ web_ip }}' }
+      run_once: true
+
+    - name: Set permissions for configuration files  # noqa run-once
+      ansible.builtin.file:
+        path: "{{ project_dir }}/{{ item }}"
+        mode: '0644'
+      delegate_to: "{{ manager_node }}"
+      loop:
+        - haproxy/reverse/haproxy.cfg
+        - nginx/ingress/default.conf
+        - nginx/ingress/nginx.conf
       run_once: true
 
     - name: Deploy the stack using compose.stack.yaml  # noqa run-once
@@ -206,6 +199,17 @@
       register: stack_status
       run_once: true
 
-    - name: Display stack deployment status
+    - name: Display stack deployment status  # noqa run-once
       ansible.builtin.debug:
         msg: "{{ stack_status.stdout }}"
+      run_once: true
+
+    - name: Wait for database to be healthy  # noqa run-once
+      ansible.builtin.wait_for:
+        host: "{{ db_ip }}"
+        port: 3306
+        delay: 10
+        timeout: 300
+        state: started
+      delegate_to: "{{ manager_node }}"
+      run_once: true
