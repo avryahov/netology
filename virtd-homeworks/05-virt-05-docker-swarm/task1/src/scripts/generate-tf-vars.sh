@@ -43,7 +43,7 @@ EOF
 cat > "$VARS_FILE" <<EOF
 default_zone          = "$DEFAULT_ZONE"
 
-vm_node_count         = 4
+vm_node_count         = 3
 vm_node_name_prefix   = "node"
 vm_node_disk_size     = 10
 

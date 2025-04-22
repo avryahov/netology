@@ -1,12 +1,16 @@
----
 - name: Configure Docker Swarm Cluster with Portainer
-  gather_facts: false
   hosts: nodes
+  gather_facts: false
+  become: true
+
   vars:
     ansible_ssh_user: ubuntu
     ansible_python_interpreter: /usr/bin/python3.8
-
-  become: true
+    manager_node: node-1
+    worker_nodes:
+      - node-2
+      - node-3
+    portainer_node: node-1
 
   pre_tasks:
     - name: Validate SSH connectivity to all nodes
@@ -18,66 +22,54 @@
         state: started
         search_regex: OpenSSH
 
-    - name: Check if Docker is installed
-      ansible.builtin.command: docker --version
+    - name: Check if Docker is installed  # noqa run-once
+      ansible.builtin.shell: docker --version
       register: docker_version
       changed_when: false
-      failed_when: docker_version.rc != 0
-      delegate_to: "{{ inventory_hostname }}"
+      ignore_errors: true
 
-    - name: Log Docker version
+    - name: Fail if Docker is not installed  # noqa run-once
+      ansible.builtin.fail:
+        msg: "Docker is not installed on {{ inventory_hostname }}."
+      when: docker_version.rc != 0
+
+    - name: Log Docker version  # noqa run-once
       ansible.builtin.debug:
         msg: "Docker is installed on {{ inventory_hostname }}: {{ docker_version.stdout }}"
 
-    - name: Dynamically assign roles to nodes
-      # noqa run-once
-      ansible.builtin.set_fact:
-        manager_node: "node-1"
-        worker_nodes: ["node-2", "node-3", "node-4"]
-        portainer_node: "node-1"
-      run_once: true
-
   tasks:
-    - name: Check if the node is already part of a swarm
-      # noqa run-once
+    # SWARM SETUP
+
+    - name: Check if manager is in active swarm # noqa run-once
+      ansible.builtin.shell: docker info --format '{{ "{{ .Swarm.LocalNodeState }}" }}'
       delegate_to: "{{ manager_node }}"
-      run_once: true
-      ansible.builtin.command: docker info --format '{% raw %}{{ .Swarm.LocalNodeState }}{% endraw %}'
-      register: swarm_state
+      register: manager_swarm_status
       changed_when: false
-      ignore_errors: true
-
-    - name: Initialize Docker Swarm on the manager node
-      # noqa run-once
-      delegate_to: "{{ manager_node }}"
       run_once: true
-      when: swarm_state.stdout != "active"
-      ansible.builtin.command: >
-        docker swarm init --advertise-addr {{ hostvars[manager_node].ansible_host }}
-      register: swarm_init
-      changed_when: "'Swarm initialized' in swarm_init.stdout"
 
-    - name: Retrieve the join token for workers
-      # noqa run-once
+    - name: Initialize Docker Swarm on the manager node  # noqa run-once
+      ansible.builtin.shell: docker swarm init --advertise-addr {{ hostvars[manager_node].ansible_host }}
       delegate_to: "{{ manager_node }}"
+      when: manager_swarm_status.stdout != "active"
+      changed_when: false
       run_once: true
-      ansible.builtin.command: docker swarm join-token worker -q
+
+    - name: Retrieve the join token for workers # noqa run-once
+      ansible.builtin.shell: docker swarm join-token -q worker
+      delegate_to: "{{ manager_node }}"
       register: worker_join_token
       changed_when: false
-
-    - name: Check if worker nodes are already part of a swarm
       run_once: true
-      ansible.builtin.command: docker info --format '{% raw %}{{ .Swarm.LocalNodeState }}{% endraw %}'
-      loop: "{{ worker_nodes }}"
-      loop_control:
-        label: "{{ item }}"
+
+    - name: Check Swarm status on worker nodes # noqa run-once
+      ansible.builtin.shell: docker info --format '{{ "{{ .Swarm.LocalNodeState }}" }}'
       delegate_to: "{{ item }}"
+      loop: "{{ worker_nodes }}"
       register: worker_swarm_state
       changed_when: false
-      ignore_errors: true
-
-    - name: Set worker swarm state map
       run_once: true
+
+    - name: Build worker status map # noqa run-once
       ansible.builtin.set_fact:
         worker_swarm_state_map: >-
           {{
@@ -86,6 +78,7 @@
               worker_swarm_state.results | map(attribute='stdout'))
             )
           }}
+      run_once: true
 
     - name: Join worker nodes to the Swarm cluster
       delegate_to: "{{ item }}"
@@ -97,63 +90,34 @@
         docker swarm join --token {{ worker_join_token.stdout }}
         {{ hostvars[manager_node].ansible_host }}:2377
       register: join_result
-      changed_when: "'This node joined a swarm' in join_result.stdout"
+      changed_when: false
       ignore_errors: true
 
-    # Portainer setup
-    - name: Check if Portainer container exists and is running
-      # noqa run-once
-      delegate_to: "{{ portainer_node }}"
-      run_once: true
+    # PORTAINER SETUP
+
+    - name: Check if Portainer service is running # noqa run-once
       ansible.builtin.shell: >
         docker inspect -f '{% raw %}{{ .State.Running }}{% endraw %}' portainer || echo "false"
+        delegate_to: "{{ portainer_node }}"
       register: portainer_status
       changed_when: false
-
-    - name: Remove existing Portainer container if it is not running
-      # noqa run-once
-      delegate_to: "{{ portainer_node }}"
       run_once: true
-      when: portainer_status.stdout != "true"
-      ansible.builtin.shell: >
-        docker rm -f portainer
-      changed_when: true
-      failed_when: false
 
-    - name: Pull Portainer image
-      # noqa run-once
-      delegate_to: "{{ portainer_node }}"
-      run_once: true
-      when: portainer_status.stdout != "true"
+    - name: Run Portainer container  # noqa run-once
       ansible.builtin.shell: >
-        docker pull portainer/portainer-ce:latest
+        docker service create
+        --name portainer
+        --publish 9000:9000
+        --constraint 'node.role == manager'
+        --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock
+        --mount type=volume,src=portainer_data,dst=/data
+        portainer/portainer-ce:latest
+      delegate_to: "{{ portainer_node }}"
+      when: portainer_status.stdout != "true"
       changed_when: false
-
-    - name: Run Portainer container
-      # noqa run-once
-      delegate_to: "{{ portainer_node }}"
       run_once: true
-      when: portainer_status.stdout != "true"
-      ansible.builtin.shell: >
-        docker run -d \
-          --name portainer \
-          --restart always \
-          -p 9000:9000 \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v portainer_data:/data \
-          portainer/portainer-ce:latest
-      changed_when: false
 
-    - name: Log Portainer installation message
-      # noqa run-once
-      delegate_to: "{{ portainer_node }}"
-      run_once: true
-      when: portainer_status.stdout != "true"
+    - name: Log Docker Swarm cluster setup completion # noqa run-once
       ansible.builtin.debug:
-        msg: "Portainer has been successfully installed on {{ portainer_node }}"
-
-    - name: Log Docker Swarm cluster setup completion
-      # noqa run-once
+        msg: "Docker Swarm cluster configured. Manager: {{ manager_node }}, Workers: {{ worker_nodes }}, Portainer: {{ portainer_node }}"
       run_once: true
-      ansible.builtin.debug:
-        msg: "Docker Swarm cluster has been successfully configured. Manager: {{ manager_node }}, Workers: {{ worker_nodes }}, Portainer: {{ portainer_node }}"
