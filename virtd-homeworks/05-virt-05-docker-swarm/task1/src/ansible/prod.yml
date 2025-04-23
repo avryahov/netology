@@ -29,6 +29,19 @@
         state: started
         search_regex: OpenSSH
 
+    # Чтение файла из локального проекта
+    - name: Load env.yml locally as vars
+      include_vars:
+        file: "{{ local_project_path }}/env.yml"
+        name: env_vars
+      run_once: true
+
+    - name: Display parsed environment variables # noqa run-once
+      debug:
+        msg: "{{ env_vars }}"
+      delegate_to: "{{ manager_node }}"
+      run_once: true
+
     # Проверка наличия Docker
     - name: Check if Docker is installed
       ansible.builtin.shell: docker --version
@@ -128,15 +141,28 @@
       run_once: true
 
     # Развертывание проекта
-    - name: Create project directory on the manager node
+    - name: Create project directory on the manager node  # noqa run-once
       ansible.builtin.file:
         path: "{{ project_dir }}"
         state: directory
         mode: '0755'
-      delegate_to: "{{ manager_node }}"
+        owner: ubuntu
+        group: ubuntu
       run_once: true
 
-    - name: Copy essential project files to the manager node  # noqa run-once
+    - name: Create necessary directories for project  # noqa run-once
+      ansible.builtin.file:
+        path: "{{ project_dir }}/{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: ubuntu
+        group: ubuntu
+      loop:
+        - haproxy/reverse
+        - nginx/ingress
+      run_once: true
+
+    - name: Synchronize project files to the manager node  # noqa run-once
       ansible.posix.synchronize:
         src: "{{ local_project_path }}/{{ item.src }}"
         dest: "{{ project_dir }}/{{ item.dest | default(item.src) }}"
@@ -150,7 +176,6 @@
         - { src: "haproxy/reverse/haproxy.cfg", dest: "haproxy/reverse/haproxy.cfg" }
         - { src: "nginx/ingress/default.conf", dest: "nginx/ingress/default.conf" }
         - { src: "nginx/ingress/nginx.conf", dest: "nginx/ingress/nginx.conf" }
-        - { src: ".env", dest: ".env" }
       run_once: true
       vars:
         ansible_python_interpreter: "/opt/homebrew/bin/python3"
@@ -162,7 +187,6 @@
         -t shvirtd-example-python:latest
         -f {{ project_dir }}/Dockerfile.python
         {{ project_dir }}
-      delegate_to: "{{ manager_node }}"
       run_once: true
 
     - name: Update IPs and subnet in compose.stack.yaml  # noqa run-once
@@ -170,7 +194,6 @@
         path: "{{ project_dir }}/compose.stack.yaml"
         regexp: "{{ item.regexp }}"
         replace: "{{ item.replace }}"
-      delegate_to: "{{ manager_node }}"
       loop:
         - { regexp: 'subnet: 172.20.0.0/24', replace: 'subnet: {{ docker_subnet }}' }
         - { regexp: 'ipv4_address: 172.20.0.10', replace: 'ipv4_address: {{ db_ip }}' }
@@ -181,17 +204,47 @@
       ansible.builtin.file:
         path: "{{ project_dir }}/{{ item }}"
         mode: '0644'
-      delegate_to: "{{ manager_node }}"
+        owner: ubuntu
+        group: ubuntu
       loop:
         - haproxy/reverse/haproxy.cfg
         - nginx/ingress/default.conf
         - nginx/ingress/nginx.conf
       run_once: true
 
+    - name: Check if jsondiff is installed  # noqa run-once
+      ansible.builtin.command: python3 -c "import jsondiff"
+      ignore_errors: true
+      register: jsondiff_check
+      run_once: true
+
+    - name: Install required Python dependencies (jsondiff)  # noqa run-once
+      ansible.builtin.pip:
+        name: jsondiff
+        executable: pip3
+      become: true
+      when: jsondiff_check is defined and jsondiff_check.failed
+      run_once: true
+
+    - name: Re-check if jsondiff is now installed  # noqa run-once
+      ansible.builtin.command: python3 -c "import jsondiff"
+      ignore_errors: true
+      register: jsondiff_check_post
+      run_once: true
+
+    - name: Debug jsondiff installation status  # noqa run-once
+      ansible.builtin.debug:
+        msg: "jsondiff is {{ 'installed' if not jsondiff_check_post.failed else 'not installed' }}"
+      run_once: true
+
     - name: Deploy the stack using compose.stack.yaml  # noqa run-once
-      ansible.builtin.shell: >
-        cd {{ project_dir }} &&
-        docker stack deploy -c compose.stack.yaml {{ project_name }}
+      ansible.builtin.docker_stack:
+        name: "{{ project_name }}"
+        state: present
+        compose:
+          - "{{ project_dir }}/compose.stack.yaml"
+      environment:
+        "{{ env_vars }}"
       delegate_to: "{{ manager_node }}"
       run_once: true
 

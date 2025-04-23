@@ -23,6 +23,13 @@ sudo apt-get install -y python3 python3-pip python3-venv || {
   exit 1
 }
 
+# --- Установка библиотеки jsondiff для Python ---
+echo "Устанавливаем библиотеку jsondiff для Python..."
+python3.8 -m pip install jsondiff || {
+  echo "Ошибка: Не удалось установить библиотеку jsondiff для Python."
+  exit 1
+}
+
 # --- Установка библиотеки Docker для Python ---
 echo "Устанавливаем библиотеку Docker для Python..."
 python3.8 -m pip install docker || {
