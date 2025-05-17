@@ -1,20 +1,22 @@
-[sources.file_logs]
+[sources.test_logs]
 type = "file"
-include = ["/var/log/*.log"]
-  
+include = ["/var/log/test.log"]
+read_from = "beginning"
+
 [transforms.parse_logs]
 type = "remap"
-inputs = ["file_logs"]
+inputs = ["test_logs"]
 source = '''
-parsed = parse_regex(string!(.message), r'^(?P<timestamp>\S+) (?P<level>\S+): (?P<message>.*)$')
+parsed = parse_regex!(.message, r'^(?P<timestamp>[^ ]+) (?P<level>[A-Z]+): (?P<message>.+)$')
 . = merge(., parsed)
 '''
 
 [sinks.clickhouse]
 type = "clickhouse"
 inputs = ["parse_logs"]
+endpoint = "http://192.168.1.4:8123"
 database = "logs"
 table = "server_logs"
-endpoint = "http://192.168.1.4:8123"  # Внутренний IP ClickHouse
 compression = "none"
+skip_unknown_fields = true
 healthcheck = true

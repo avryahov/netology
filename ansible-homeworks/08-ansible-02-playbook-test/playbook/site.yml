@@ -169,3 +169,36 @@
         name: vector
         enabled: true
         state: started
+
+    # Создаём тестовый лог на сервере Vector
+    - name: Create test log entry for Vector
+      ansible.builtin.shell: |
+        echo "2025-04-05T12:00:00 INFO: Test log message from Vector" | sudo tee -a /var/log/test.log > /dev/null
+      args:
+        executable: /bin/bash
+
+    # Ждём несколько секунд, чтобы Vector успел обработать файл
+    - name: Wait for Vector to process the new log
+      ansible.builtin.pause:
+        seconds: 5
+
+    # Проверяем, появилась ли запись в ClickHouse
+    - name: Check if test log is in ClickHouse
+      delegate_to: clickhouse-01  # Выполняется на хосте ClickHouse
+      run_once: true
+      ansible.builtin.command: |
+        clickhouse-client --host=127.0.0.1 -q "
+          SELECT * FROM logs.server_logs
+          WHERE message LIKE '%Test log message from Vector%'
+          LIMIT 1;
+        "
+      register: ch_query_result
+      ignore_errors: no
+      changed_when: false
+
+    - name: Fail if test log not found in ClickHouse
+      ansible.builtin.assert:
+        that:
+          - "'Test log message from Vector' in ch_query_result.stdout"
+        fail_msg: "Test log NOT found in ClickHouse. Integration failed."
+        success_msg: "Test log successfully found in ClickHouse. Integration works!"
