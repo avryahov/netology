@@ -1,4 +1,3 @@
----
 # === PLAY 1: Установка ClickHouse ===
 - name: Install Clickhouse
   hosts: clickhouse
@@ -94,6 +93,41 @@
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc !=82
       changed_when: "'CREATE DATABASE' in create_db.stdout"
+
+    # Проверка доступности порта 8123 через curl
+    - name: Ensure port 8123 is accessible via HTTP
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8123/
+        return_content: no
+        status_code: 200
+      register: http_check
+      until: http_check.status == 200
+      retries: 5
+      delay: 3
+
+    # Создание таблицы server_logs
+    - name: Create table server_logs in database logs
+      ansible.builtin.command: |
+        clickhouse-client --host=127.0.0.1 -q '
+          CREATE TABLE IF NOT EXISTS logs.server_logs (
+            timestamp String,
+            level String,
+            message String
+          ) ENGINE = MergeTree()
+          ORDER BY tuple(timestamp);
+        '
+      register: create_table
+      changed_when: "'CREATE TABLE' in create_table.stdout"
+
+    # Проверка наличия таблицы
+    - name: Verify that table server_logs exists
+      ansible.builtin.command: |
+        clickhouse-client --host=127.0.0.1 -q 'SHOW TABLES FROM logs;'
+      register: tables
+      until: "'server_logs' in tables.stdout"
+      retries: 5
+      delay: 2
+      changed_when: false
 
 # === PLAY 2: Установка и настройка Vector ===
 - name: Install Vector
