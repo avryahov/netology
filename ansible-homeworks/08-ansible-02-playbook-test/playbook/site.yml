@@ -7,6 +7,13 @@
       ansible.builtin.service:
         name: clickhouse-server
         state: restarted
+  pre_tasks:
+    - name: Ensure python3-lxml is installed (required for xml module)
+      become: true
+      ansible.builtin.apt:
+        name: python3-lxml
+        state: present
+        update_cache: yes
   tasks:
     - name: Get ClickHouse distrib
       ansible.builtin.get_url:
@@ -24,28 +31,50 @@
       register: dpkg_result
       until: dpkg_result is succeeded
 
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure <http_port>8123</http_port> exists
+      become: true
+      ansible.builtin.xml:
+        file: /etc/clickhouse-server/config.xml
+        xpath: /clickhouse/http_port
+        value: "8123"
+        state: present
+
+    - name: Ensure <tcp_port>9000</tcp_port> exists
+      become: true
+      ansible.builtin.xml:
+        file: /etc/clickhouse-server/config.xml
+        xpath: /clickhouse/tcp_port
+        value: "9000"
+        state: present
+
     - name: Ensure listen_host is set to allow external connections
       become: true
       ansible.builtin.xml:
         file: /etc/clickhouse-server/config.xml
-        xpath: /yandex/listen_host
+        xpath: /clickhouse/listen_host
         value: "0.0.0.0"
         state: present
       notify: Start clickhouse service
 
-    - name: Flush handlers
-      meta: flush_handlers
-
-    - name: Wait for ClickHouse to start
-      ansible.builtin.wait_for:
-        host: "localhost"
-        port: 9000
-        timeout: 60
+    - name: Check ClickHouse service status
+      ansible.builtin.service:
+        name: clickhouse-server
         state: started
-      delegate_to: localhost
+      register: clickhouse_status
+
+    - name: Wait for ClickHouse to become available via client
+      ansible.builtin.command: "clickhouse-client --host=127.0.0.1 -q 'SELECT 1'"
+      register: ch_ready
+      retries: 10
+      delay: 3
+      until: ch_ready.rc == 0
+      changed_when: false
 
     - name: Create database
-      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      ansible.builtin.command: "clickhouse-client --host=127.0.0.1 -q 'create database logs;'"
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc !=82
-      changed_when: create_db.rc == 0
+      changed_when: "'CREATE DATABASE' in create_db.stdout"
