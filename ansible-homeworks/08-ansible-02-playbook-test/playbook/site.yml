@@ -8,27 +8,42 @@
         name: clickhouse-server
         state: restarted
   tasks:
-    - block:
-        - name: Get clickhouse distrib
-          ansible.builtin.get_url:
-            url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
-            dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
-          with_items: "{{ clickhouse_packages }}"
-      rescue:
-        - name: Get clickhouse distrib
-          ansible.builtin.get_url:
-            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
-            dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
-    - name: Install clickhouse packages
+    - name: Get ClickHouse distrib
+      ansible.builtin.get_url:
+        url: "https://packages.clickhouse.com/deb/pool/main/c/{{ item }}/{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
+        dest: "./{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
+      loop: "{{ clickhouse_packages }}"
+
+    - name: Install ClickHouse packages via dpkg
       become: true
-      ansible.builtin.yum:
-        name:
-          - clickhouse-common-static-{{ clickhouse_version }}.rpm
-          - clickhouse-client-{{ clickhouse_version }}.rpm
-          - clickhouse-server-{{ clickhouse_version }}.rpm
+      ansible.builtin.command:
+        cmd: "dpkg -i {{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
+      loop: "{{ clickhouse_packages }}"
+      loop_control:
+        label: "{{ item }}"
+      register: dpkg_result
+      until: dpkg_result is succeeded
+
+    - name: Ensure listen_host is set to allow external connections
+      become: true
+      ansible.builtin.xml:
+        file: /etc/clickhouse-server/config.xml
+        xpath: /yandex/listen_host
+        value: "0.0.0.0"
+        state: present
       notify: Start clickhouse service
+
     - name: Flush handlers
       meta: flush_handlers
+
+    - name: Wait for ClickHouse to start
+      ansible.builtin.wait_for:
+        host: "localhost"
+        port: 9000
+        timeout: 60
+        state: started
+      delegate_to: localhost
+
     - name: Create database
       ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
       register: create_db
