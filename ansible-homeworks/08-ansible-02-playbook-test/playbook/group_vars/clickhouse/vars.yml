@@ -1,6 +1,11 @@
 ---
 clickhouse_version: "22.3.3.44"
 clickhouse_packages:
+  - clickhouse-common-static
   - clickhouse-client
   - clickhouse-server
-  - clickhouse-common-static
+clickhouse_package_suffixes:
+  clickhouse-client: "_all"
+  clickhouse-server: "_all"
+  clickhouse-common-static: "_amd64"
+ansible_python_interpreter: /usr/bin/python3.12
