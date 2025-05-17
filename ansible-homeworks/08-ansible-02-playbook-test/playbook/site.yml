@@ -1,26 +1,35 @@
 ---
+# === PLAY 1: Установка ClickHouse ===
 - name: Install Clickhouse
   hosts: clickhouse
+
+  # Хендлер: перезапуск clickhouse при изменениях
   handlers:
     - name: Start clickhouse service
       become: true
       ansible.builtin.service:
         name: clickhouse-server
         state: restarted
+
+  # Предзадачи
   pre_tasks:
+    # Установка дополнительной библиотеки python3 по работе с xml
     - name: Ensure python3-lxml is installed (required for xml module)
       become: true
       ansible.builtin.apt:
         name: python3-lxml
         state: present
         update_cache: yes
+
   tasks:
+    # Скачиваем .deb пакеты ClickHouse
     - name: Get ClickHouse distrib
       ansible.builtin.get_url:
         url: "https://packages.clickhouse.com/deb/pool/main/c/{{ item }}/{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
         dest: "./{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
       loop: "{{ clickhouse_packages }}"
 
+    # Устанавливаем ClickHouse .deb пакеты через apt
     - name: Install ClickHouse packages via dpkg
       become: true
       ansible.builtin.command:
@@ -31,9 +40,11 @@
       register: dpkg_result
       until: dpkg_result is succeeded
 
+    # Принудительный вызов всех хендлеров (перезапуск ClickHouse)
     - name: Flush handlers
       ansible.builtin.meta: flush_handlers
 
+    # Проверка наличия HTTP порта
     - name: Ensure <http_port>8123</http_port> exists
       become: true
       ansible.builtin.xml:
@@ -42,6 +53,7 @@
         value: "8123"
         state: present
 
+    # Проверка наличия TCP порта
     - name: Ensure <tcp_port>9000</tcp_port> exists
       become: true
       ansible.builtin.xml:
@@ -50,6 +62,7 @@
         value: "9000"
         state: present
 
+    # Проверка наличия прослушивания хоста
     - name: Ensure listen_host is set to allow external connections
       become: true
       ansible.builtin.xml:
@@ -59,12 +72,14 @@
         state: present
       notify: Start clickhouse service
 
+    # Проверка старта сервера
     - name: Check ClickHouse service status
       ansible.builtin.service:
         name: clickhouse-server
         state: started
       register: clickhouse_status
 
+    # Проверка работы клиента
     - name: Wait for ClickHouse to become available via client
       ansible.builtin.command: "clickhouse-client --host=127.0.0.1 -q 'SELECT 1'"
       register: ch_ready
@@ -73,8 +88,50 @@
       until: ch_ready.rc == 0
       changed_when: false
 
+    # Создаём БД logs в ClickHouse
     - name: Create database
       ansible.builtin.command: "clickhouse-client --host=127.0.0.1 -q 'create database logs;'"
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc !=82
       changed_when: "'CREATE DATABASE' in create_db.stdout"
+
+# === PLAY 2: Установка и настройка Vector ===
+- name: Install Vector
+  hosts: vector
+  become: true
+
+  handlers:
+    # Хендлер: перезапуск vector при изменении конфига
+    - name: Restart vector
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+
+  tasks:
+    # Скачиваем официальный .deb дистрибутив Vector
+    - name: Download Vector .deb package
+      ansible.builtin.get_url:
+        url: "https://packages.timber.io/vector/{{ vector_version }}/vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+        dest: "./vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+
+    # Устанавливаем Vector
+    - name: Install Vector via dpkg
+      ansible.builtin.command:
+        cmd: "dpkg -i ./vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+      register: dpkg_result
+      until: dpkg_result is succeeded
+
+    # Копируем конфигурационный файл из шаблона
+    - name: Deploy Vector config
+      ansible.builtin.template:
+        src: templates/vector.toml.j2
+        dest: /etc/vector/vector.toml
+        mode: '0644'
+      notify: Restart vector  # если изменился конфиг — перезапускаем
+
+    # Убеждаемся, что vector включён и запущен через systemd
+    - name: Ensure vector service is running
+      ansible.builtin.systemd:
+        name: vector
+        enabled: true
+        state: started

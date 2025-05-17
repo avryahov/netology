@@ -4,3 +4,8 @@ clickhouse:
     clickhouse-01:
       ansible_host: 158.160.116.74
       ansible_user: avryahov
+vector:
+  hosts:
+    vector-01:
+      ansible_host: 89.169.136.74
+      ansible_user: avryahov

@@ -1,0 +1,4 @@
+---
+vector_version: "0.46.1"
+vector_package_suffix: _amd64
+ansible_python_interpreter: /usr/bin/python3.12
