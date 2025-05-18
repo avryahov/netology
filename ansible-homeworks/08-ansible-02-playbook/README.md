@@ -1,6 +1,7 @@
 # Домашнее задание к занятию 2 «Работа с Playbook»
 
-## Факутальтивный вопрос 1-ого занятия: 
+## Факутальтивный вопрос 1-ог
+о занятия: 
 
 1. Как называется режим работы в Ansible где можно интерактивно debug Ansible task?
 
@@ -46,84 +47,146 @@ ansible-playbook playbook.yml --step
 
 ### Ответ
 
-1. Изменим **inventory** файл `prod.yml` так, что мы будем подключаться к **docker-контейнеру**
+1. Изменим **inventory** файл `prod.yml` так, что мы будем подключаться к удаленным ВМ на **Yandex Cloud**
 
-![screenshot-2025-04-05-11-48-45.png](screens/screenshot-2025-04-05-11-48-45.png)
+Работаю без Terraform. На время выполнения задачи IP-адреса указаны явно без генерации
 
-Перед работой проверим работоспособность и подготовить файл **playbook** для отладки и запуска **clickhouse** базы данных на **control-хосте** под управлением операционной системы **macOS** на базе _ARM-архитектуры_
+```yml
+---
+clickhouse:
+    hosts:
+        clickhouse-01:
+            ansible_host: 158.160.116.74
+            ansible_user: avryahov
+vector:
+    hosts:
+        vector-01:
+            ansible_host: 89.169.136.74
+            ansible_user: avryahov
+```
 
-Сначала создадим пароль ```netology```, но зашифруем его с помощью команды
+Переработал **playbook** `site.yml` с переменными так, чтобы скачивались deb-пакеты. Установка прошла успешно
+
+![screenshot-2025-05-17-23-07-00.png](screens/screenshot-2025-05-17-23-07-00.png)
+
+Базы данных читаются. Запросы отрабатывают
+
+![screenshot-2025-05-17-23-06-39.png](screens/screenshot-2025-05-17-23-06-39.png)
+
+2. Дополнил новым play-ем по загрузке, установки и развертке **Vector-а** c учетом новых требований, а также шаблона jinja2 конфигурации
+
+```toml
+[sources.test_logs]
+type = "file"
+include = ["/var/log/test.log"]
+read_from = "beginning"
+
+[transforms.parse_logs]
+type = "remap"
+inputs = ["test_logs"]
+source = '''
+parsed = parse_regex!(.message, r'^(?P<timestamp>[^ ]+) (?P<level>[A-Z]+): (?P<message>.+)$')
+. = merge(., parsed)
+'''
+
+[sinks.clickhouse]
+type = "clickhouse"
+inputs = ["parse_logs"]
+endpoint = "http://192.168.1.4:8123"
+database = "logs"
+table = "server_logs"
+compression = "none"
+skip_unknown_fields = true
+healthcheck = true
+```
+
+Вектор запустился на втором хосте успешно. Однако были трудности
+
+![screenshot-2025-05-18-00-02-24.png](screens/screenshot-2025-05-18-00-02-24.png)
+
+А именно настройка vector и clickhouse между собой. Пришлось в службе явно указывать ссылку на конфигурацию. Добавлять таймауты после рестарта сервиса
+
+![screenshot-2025-05-18-11-49-21.png](screens/screenshot-2025-05-18-11-49-21.png)
+
+В итоге. Удалось связать. Отправка логов в БД успешно прошла
+
+3. Фрагмент плейбука по вектору с учетом использования `get_url`, `template`, `unarchive` или `file`.
+
+```yml
+# === PLAY 2: Установка и настройка Vector ===
+- name: Install Vector
+  hosts: vector
+  tags:
+    - vector
+      become: true
+
+  # Хендлер: перезапуск vector при изменении конфига
+  handlers:
+    - name: Restart vector
+      ansible.builtin.systemd:
+      name: vector
+      state: restarted
+      enabled: true
+      daemon_reload: true  # Важно: перечитать unit-файл перед рестартом
+
+  tasks:
+  # Скачиваем официальный .deb дистрибутив Vector
+    - name: Download Vector .deb package
+      ansible.builtin.get_url:
+      url: "https://packages.timber.io/vector/{{ vector_version }}/vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+      dest: "./vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+
+  # Устанавливаем Vector
+    - name: Install Vector via dpkg
+      ansible.builtin.command:
+      cmd: "dpkg -i ./vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+      register: dpkg_result
+      until: dpkg_result is succeeded
+
+  # Копируем конфигурационный файл из шаблона
+    - name: Deploy Vector config
+      ansible.builtin.template:
+      src: templates/vector.toml.j2
+      dest: /etc/vector/vector.toml
+      mode: '0644'
+
+  # Проверка наличия конфига перед валидацией
+    - name: Ensure Vector config exists before restart
+      ansible.builtin.stat:
+      path: /etc/vector/vector.toml
+      register: config_stat
+
+  # Проверка корректности конфигурационного файла
+    - name: Validate Vector config before restart
+      ansible.builtin.command: "vector validate /etc/vector/vector.toml"
+      changed_when: false
+      ignore_errors: no
+      when: config_stat.stat.exists
+```
+
+Как видно из фрагмента, а также исходных файлов можно отдельно поднимать плейбук по тегам. Ниже пример команды
 
 ```bash
-ansible-vault encrypt_string 'netology' --name 'common_password'
+ansible-playbook -i inventory/prod.yml site.yml -u avryahov --private-key=~/.ssh/id_ed25519 --tags=vector
 ```
 
-![screenshot-2025-04-05-13-09-56.png](screens/screenshot-2025-04-05-13-09-56.png)
+5. С линковщиком проблемы были на макбуке. Во-первых ругался на `ansible.builtin.xml`. Заменил на установленный `community.general.xml`. Добавлял комментарий `# noqa syntax-check[unknown-module]`. Линковщику не почем. После апгрейда. Ситуация та же
 
-Далее сохраним зашифрованное значение в файле **фактов**
+![screenshot-2025-05-18-18-05-03.png](screens/screenshot-2025-05-18-18-05-03.png)
 
-![screenshot-2025-04-05-13-10-40.png](screens/screenshot-2025-04-05-13-10-40.png)
+После попробовал использовать явно указание коллекции и глобальную переменную. В итоге команда стала такой
 
-Поменяем подключение с ```docker``` на ```ssh```
-
-![screenshot-2025-04-05-13-19-46.png](screens/screenshot-2025-04-05-13-19-46.png)
-
-Создал новый **docker-образ**, описанного в Dockerfile
-
-```docker
-# Базовый образ Ubuntu
-FROM ubuntu:22.04
-
-# Определение переменных
-ARG ROOT_PASSWORD
-
-# Обновление пакетов и установка необходимых зависимостей
-RUN apt-get update && \
-    apt-get install -y openssh-server python3 sudo && \
-    apt-get clean
-
-# Настройка SSH
-RUN mkdir /var/run/sshd && \
-    echo "root:${ROOT_PASSWORD}" | chpasswd && \
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-
-# Отключение DNS-проверки для ускорения подключения
-RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
-
-# Порт SSH
-EXPOSE 2222
-
-# Запуск SSH-сервера
-CMD ["/usr/sbin/sshd", "-D"]
-```
-
-C помощью команды поднял всё необходимое
 
 ```bash
-ansible-playbook -i inventory/prod.yml build.yml --ask-vault-pass
+ANSIBLE_COLLECTIONS_PATH="$HOME/.ansible/collections:/usr/share/ansible/collections:/Users/avrjakhov/.local/pipx/venvs/ansible/lib/python3.13/site-packages/ansible_collections" ansible-lint site.yml
 ```
 
-![screenshot-2025-04-05-13-52-15.png](screens/screenshot-2025-04-05-13-52-15.png)
+Результат её работы ниже на снимке экрана. Куда лучше стало
 
-После поднял образ в новом контейнере **clickhouse-01**, наименование которого совпадает с нашим **inventory**
+![screenshot-2025-05-18-18-27-25.png](screens/screenshot-2025-05-18-18-27-25.png)
 
-![screenshot-2025-04-05-14-29-26.png](screens/screenshot-2025-04-05-14-29-26.png)
+После устранения всех проблем и предупреждений. Я экспортировал в настройки командной оболочки. Использование полного пути отпало. Утилита стала работать как надо
 
-Далее изменил исходные данные фактов, а именно, помимо зашифрованного пароля, указал новую версию пакетов ```clickhouse_version: "24.8.12.28"```
-
-После этого с помощью команды запустил **playbook**
-
-```bash
-ansible-playbook -i inventory/prod.yml site.yml --ask-vault-pass
-```
-
-![screenshot-2025-04-05-15-07-29.png](screens/screenshot-2025-04-05-15-07-29.png)
-
-Проверил работоспособность БД, подключившись к контейнеру
-
-![screenshot-2025-04-05-15-15-33.png](screens/screenshot-2025-04-05-15-15-33.png)
-
-Playbook **site.yml** претерпел сильные изменения, так как на операционной системе **macOS** на базе **ARM**-чипов помимо актуальной версии пакетов ряд проблем собран был. Пришлось в сети интернет находить разные решения и описания
+![screenshot-2025-05-18-18-38-10.png](screens/screenshot-2025-05-18-18-38-10.png)
 
 ---

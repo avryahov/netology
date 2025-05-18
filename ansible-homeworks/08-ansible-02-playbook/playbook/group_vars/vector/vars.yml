@@ -1,34 +1,4 @@
-vector_version: "0.45.0"
-vector_architecture: "arm"
-vector_data_dir: "/var/lib/vector"
-vector_defaults:
-  clickhouse:
-    format: "json_each_row"
-    healthcheck: true
-vector_sources:
-  nginx_logs: # Переименовано из demo_logs_source
-    type: "file"
-    include: ["/var/log/nginx/my_access.log"]
-    read_from: "end"
-vector_sinks:
-  console:
-    type: "console"
-    inputs:
-      - "nginx_logs" # Изменено с remap_logs и demo_logs_source на nginx_logs
-    encoding:
-      codec: "json"
-  file:
-    type: "file"
-    path: "/var/log/vector/nginx_vector.log" # Путь изменен для логов Nginx
-    encoding:
-      codec: "json"
-  clickhouse_output:
-    type: "clickhouse"
-    inputs:
-      - "nginx_logs" # Изменено с remap_logs на nginx_logs
-    endpoint: "http://clickhouse-01:8123"
-    database: "nginxdb" # Изменено с logs на nginxdb
-    table: "access_logs" # Изменено с vector на access_logs
-    compression: "gzip"
-    format: "json_each_row"
-    healthcheck: true
+---
+vector_version: "0.46.1"
+vector_package_suffix: _amd64
+ansible_python_interpreter: /usr/bin/python3.12

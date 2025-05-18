@@ -1,19 +1,11 @@
 ---
-all:
-  children:
-    clickhouse:
-      hosts:
-        clickhouse-01:
-          ansible_host: localhost
-          ansible_port: 2222
-    vector:
-      hosts:
-        vector-01:
-          ansible_host: localhost
-          ansible_port: 2223
-  vars:
-    ansible_user: root
-    ansible_password: "{{ common_password }}"
-    ansible_connection: ssh
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+clickhouse:
+  hosts:
+    clickhouse-01:
+      ansible_host: 158.160.116.74
+      ansible_user: avryahov
+vector:
+  hosts:
+    vector-01:
+      ansible_host: 89.169.136.74
+      ansible_user: avryahov

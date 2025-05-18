@@ -21,7 +21,7 @@
       ansible.builtin.apt:
         name: python3-lxml
         state: present
-        update_cache: true
+        update_cache: yes
 
   tasks:
     # Скачиваем .deb пакеты ClickHouse
@@ -29,7 +29,6 @@
       ansible.builtin.get_url:
         url: "https://packages.clickhouse.com/deb/pool/main/c/{{ item }}/{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
         dest: "./{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
-        mode: '0644'
       loop: "{{ clickhouse_packages }}"
 
     # Устанавливаем ClickHouse .deb пакеты через dpkg
@@ -41,7 +40,6 @@
       loop_control:
         label: "{{ item }}"
       register: dpkg_result
-      changed_when: false
       until: dpkg_result is succeeded
 
     # Принудительный вызов всех хендлеров (перезапуск ClickHouse)
@@ -51,7 +49,7 @@
     # Проверка наличия HTTP порта
     - name: Ensure <http_port>8123</http_port> exists
       become: true
-      community.general.xml: # noqa syntax-check[unknown-module]
+      ansible.builtin.xml: # noqa syntax-check[unknown-module]
         file: /etc/clickhouse-server/config.xml
         xpath: /clickhouse/http_port
         value: "8123"
@@ -60,7 +58,7 @@
     # Проверка наличия TCP порта
     - name: Ensure <tcp_port>9000</tcp_port> exists
       become: true
-      community.general.xml: # noqa syntax-check[unknown-module]
+      ansible.builtin.xml: # noqa syntax-check[unknown-module]
         file: /etc/clickhouse-server/config.xml
         xpath: /clickhouse/tcp_port
         value: "9000"
@@ -69,7 +67,7 @@
     # Проверка наличия прослушивания хоста
     - name: Ensure listen_host is set to allow external connections
       become: true
-      community.general.xml: # noqa syntax-check[unknown-module]
+      ansible.builtin.xml: # noqa syntax-check[unknown-module]
         file: /etc/clickhouse-server/config.xml
         xpath: /clickhouse/listen_host
         value: "0.0.0.0"
@@ -96,14 +94,14 @@
     - name: Create database
       ansible.builtin.command: "clickhouse-client --host=127.0.0.1 -q 'create database logs;'"
       register: create_db
-      failed_when: create_db.rc != 0 and create_db.rc != 82
+      failed_when: create_db.rc != 0 and create_db.rc !=82
       changed_when: "'CREATE DATABASE' in create_db.stdout"
 
     # Проверка доступности порта 8123 через HTTP
     - name: Ensure port 8123 is accessible via HTTP
       ansible.builtin.uri:
         url: http://127.0.0.1:8123/
-        return_content: false
+        return_content: no
         status_code: 200
       register: http_check
       until: http_check.status == 200
@@ -154,16 +152,14 @@
     # Скачиваем официальный .deb дистрибутив Vector
     - name: Download Vector .deb package
       ansible.builtin.get_url:
-        url: "https://packages.timber.io/vector/{{ vector_version }}/vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
-        dest: "./vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
-        mode: '0644'
+        url: "https://packages.timber.io/vector/{{ vector_version }}/vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
+        dest: "./vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
 
     # Устанавливаем Vector
     - name: Install Vector via dpkg
       ansible.builtin.command:
-        cmd: "dpkg -i ./vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
+        cmd: "dpkg -i ./vector_{{ vector_version }}-1{{vector_package_suffix}}.deb"
       register: dpkg_result
-      changed_when: false
       until: dpkg_result is succeeded
 
     # Копируем конфигурационный файл из шаблона
@@ -183,7 +179,7 @@
     - name: Validate Vector config before restart
       ansible.builtin.command: "vector validate /etc/vector/vector.toml"
       changed_when: false
-      ignore_errors: false
+      ignore_errors: no
       when: config_stat.stat.exists
 
     # Поиск systemd unit-файла Vector
@@ -213,7 +209,7 @@
         path: "{{ vector_unit_file.files[0].path }}"
         regexp: '^ExecStart='
         line: 'ExecStart=/usr/bin/vector --config /etc/vector/vector.toml'
-        backrefs: false
+        backrefs: no
       notify: Restart vector
 
     # Принудительный вызов хендлеров (рестарт vector после обновления unit)
@@ -245,8 +241,7 @@
       ansible.builtin.lineinfile:
         path: /var/log/test.log
         line: "2025-05-18T11:06:00 INFO: Test log message from Vector"
-        create: true
-        mode: '0644'
+        create: yes
 
     # Ждём, пока Vector обработает лог
     - name: Wait for Vector to process the new log
@@ -256,6 +251,7 @@
     # Проверяем, появилась ли запись в ClickHouse
     - name: Check if test log is in ClickHouse
       delegate_to: clickhouse-01  # Выполняется на хосте ClickHouse
+      run_once: true
       ansible.builtin.command: |
         clickhouse-client --host=127.0.0.1 -q "
           SELECT * FROM logs.server_logs
@@ -263,7 +259,7 @@
           LIMIT 1;
         "
       register: ch_query_result
-      ignore_errors: false
+      ignore_errors: no
       changed_when: false
 
     # Отладка: вывод результата запроса
