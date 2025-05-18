@@ -8,9 +8,10 @@
   handlers:
     - name: Start clickhouse service
       become: true
-      ansible.builtin.service:
+      ansible.builtin.systemd:
         name: clickhouse-server
         state: restarted
+        enabled: true
 
   # Предзадачи
   pre_tasks:
@@ -141,11 +142,11 @@
   # Хендлер: перезапуск vector при изменении конфига
   handlers:
     - name: Restart vector
-      ansible.builtin.service:
+      ansible.builtin.systemd:
         name: vector
         state: restarted
-      args:
-        daemon_reload: yes
+        enabled: true
+        daemon_reload: true  # Важно: перечитать unit-файл перед рестартом
 
   tasks:
     # Скачиваем официальный .deb дистрибутив Vector
@@ -191,6 +192,11 @@
         patterns: 'vector.service'
       register: vector_unit_file
 
+    # Отладка: путь к найденному unit-файлу
+    - name: Debug vector unit file path
+      ansible.builtin.debug:
+        var: vector_unit_file.files[0].path
+
     # Ошибка, если unit-файл не найден
     - name: Fail if Vector systemd unit file not found
       ansible.builtin.fail:
@@ -205,6 +211,16 @@
         line: 'ExecStart=/usr/bin/vector --config /etc/vector/vector.toml'
         backrefs: no
       notify: Restart vector
+
+    # Принудительный вызов хендлеров (рестарт vector после обновления unit)
+    - name: Flush handlers (after unit file change)
+      ansible.builtin.meta: flush_handlers
+
+    # Ожидание запуска Vector (после рестарта)
+    - name: Wait for Vector to become available
+      ansible.builtin.wait_for:
+        state: started
+        timeout: 60
 
     # Убедиться, что vector работает и в автозагрузке
     - name: Ensure vector service is running
