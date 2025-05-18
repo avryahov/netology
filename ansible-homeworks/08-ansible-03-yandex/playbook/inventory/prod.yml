@@ -9,3 +9,8 @@ vector:
     vector-01:
       ansible_host: 89.169.136.74
       ansible_user: avryahov
+lighthouse:
+  hosts:
+    lighthouse-01:
+      ansible_host: 158.160.105.220
+      ansible_user: avryahov

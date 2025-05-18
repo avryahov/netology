@@ -279,3 +279,121 @@
           - "'Test log message from Vector' in ch_query_result.stdout"
         fail_msg: "Test log NOT found in ClickHouse. Integration failed."
         success_msg: "Test log successfully found in ClickHouse. Integration works!"
+
+# === PLAY 3: Установка и настройка LightHouse ===
+- name: Install LightHouse
+  hosts: lighthouse
+  become: true
+  tags:
+    - lighthouse
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+  tasks:
+    # Установка nginx
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+
+    - name: Install Nginx (RedHat)
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    # Создание директории под Lighthouse
+    - name: Ensure lighthouse directory exists
+      ansible.builtin.file:
+        path: "{{ lighthouse_dest }}"
+        state: directory
+        mode: '0755'
+
+    # Скачиваем LightHouse из GitHub
+    - name: Download Lighthouse static files
+      ansible.builtin.get_url:
+        url: "https://github.com/VKCOM/lighthouse/archive/refs/heads/{{ lighthouse_version }}.zip"
+        dest: "/tmp/lighthouse.zip"
+        mode: '0644'
+
+    # Распаковываем
+    - name: Unarchive Lighthouse
+      ansible.builtin.unarchive:
+        src: "/tmp/lighthouse.zip"
+        dest: "/var/www"
+        remote_src: true
+
+    # Переименовываем директорию в стандартную
+    - name: Move Lighthouse static files to target location
+      ansible.builtin.command:
+        cmd: mv /var/www/lighthouse-{{ lighthouse_version }} {{ lighthouse_dest }}
+      args:
+        creates: "{{ lighthouse_dest }}"
+
+    # Удаляем zip-архив
+    - name: Clean up lighthouse zip file
+      ansible.builtin.file:
+        path: /tmp/lighthouse.zip
+        state: absent
+
+    # Копируем конфиг nginx
+    - name: Deploy Nginx config for Lighthouse
+      ansible.builtin.template:
+        src: templates/lighthouse-nginx.conf.j2
+        dest: /etc/nginx/sites-available/lighthouse.conf
+        mode: '0644'
+      notify: Restart nginx
+
+    # Ссылка в sites-enabled
+    - name: Enable Lighthouse site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/lighthouse.conf
+        dest: /etc/nginx/sites-enabled/lighthouse.conf
+        state: link
+        force: true
+      notify: Restart nginx
+
+    # Убедимся, что nginx запущен
+    - name: Ensure nginx is running
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    # Проверка, что LightHouse интерфейс доступен по HTTP
+    - name: Check LightHouse HTTP response on localhost
+      ansible.builtin.uri:
+        url: http://localhost/
+        status_code: 200
+        return_content: true
+      register: lighthouse_http
+
+    # Убедимся, что в HTML содержится что-то от LightHouse
+    - name: Assert LightHouse HTML page is present
+      ansible.builtin.assert:
+        that:
+          - "'LightHouse' in lighthouse_http.content or 'VKCOM' in lighthouse_http.content"
+        fail_msg: "LightHouse UI is NOT accessible or content is incorrect."
+        success_msg: "LightHouse UI is working."
+
+    # Проверка соединения с ClickHouse с хоста LightHouse
+    - name: Test connection to ClickHouse from LightHouse
+      ansible.builtin.uri:
+        url: "http://{{ hostvars['clickhouse-01']['ansible_host'] }}:8123/"
+        status_code: 200
+        return_content: true
+      register: ch_response
+
+    # Проверка, что ClickHouse вернул 'Ok.'
+    - name: Assert ClickHouse returned OK from LightHouse
+      ansible.builtin.assert:
+        that:
+          - "'Ok.' in ch_response.content"
+        fail_msg: "LightHouse cannot reach ClickHouse at port 8123."
+        success_msg: "ClickHouse is reachable from LightHouse."
