@@ -287,6 +287,22 @@
   tags:
     - lighthouse
 
+  # Предзадачи
+  pre_tasks:
+  # Установка unzip
+  - name: Install unzip (Debian)
+    ansible.builtin.apt:
+      name: unzip
+      state: present
+    when: ansible_os_family == 'Debian'
+
+  - name: Install unzip (RedHat)
+    ansible.builtin.dnf:
+      name: unzip
+      state: present
+    when: ansible_os_family == 'RedHat'
+
+  # Хендлер: перезапуск nginx при изменениях
   handlers:
     - name: Restart nginx
       ansible.builtin.service:
