@@ -189,4 +189,37 @@ ANSIBLE_COLLECTIONS_PATH="$HOME/.ansible/collections:/usr/share/ansible/collecti
 
 ![screenshot-2025-05-18-18-38-10.png](screens/screenshot-2025-05-18-18-38-10.png)
 
+6. С `--check` опцией сначала были проблемы, так как `ansible.builtin.command` не может работать в таком "чек-режиме"
+
+![screenshot-2025-05-18-19-21-41.png](screens/screenshot-2025-05-18-19-21-41.png)
+
+После добавления дополнительной опции `when: not ansible_check_mode`, чтобы при "чеке" нашу задачу игнорировать, проверка первого плея прошла
+
+```yml
+# Проверка наличия таблицы
+- name: Verify that table server_logs exists
+  ansible.builtin.command: |
+    clickhouse-client --host=127.0.0.1 -q 'SHOW TABLES FROM logs;'
+  when: not ansible_check_mode
+  register: tables
+  until: "'server_logs' in tables.stdout"
+  retries: 5
+  delay: 2
+  changed_when: false
+```
+
+![screenshot-2025-05-18-19-22-35.png](screens/screenshot-2025-05-18-19-22-35.png)
+
+7. Сравнение `--diff` выполнил трижды на плее Вектора при "чеке", при полной работе. Повторно. Отработано штатно
+
+![screenshot-2025-05-18-19-44-38.png](screens/screenshot-2025-05-18-19-44-38.png)
+
+Без чек-режима
+
+![screenshot-2025-05-18-19-33-54.png](screens/screenshot-2025-05-18-19-33-54.png)
+
+Повторно
+
+![screenshot-2025-05-18-19-36-56.png](screens/screenshot-2025-05-18-19-36-56.png)
+
 ---
