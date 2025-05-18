@@ -1,6 +1,8 @@
 # === PLAY 1: Установка ClickHouse ===
 - name: Install Clickhouse
   hosts: clickhouse
+  tags:
+    - clickhouse
 
   # Хендлер: перезапуск clickhouse при изменениях
   handlers:
@@ -28,7 +30,7 @@
         dest: "./{{ item }}_{{ clickhouse_version }}{{ clickhouse_package_suffixes[item] }}.deb"
       loop: "{{ clickhouse_packages }}"
 
-    # Устанавливаем ClickHouse .deb пакеты через apt
+    # Устанавливаем ClickHouse .deb пакеты через dpkg
     - name: Install ClickHouse packages via dpkg
       become: true
       ansible.builtin.command:
@@ -94,7 +96,7 @@
       failed_when: create_db.rc != 0 and create_db.rc !=82
       changed_when: "'CREATE DATABASE' in create_db.stdout"
 
-    # Проверка доступности порта 8123 через curl
+    # Проверка доступности порта 8123 через HTTP
     - name: Ensure port 8123 is accessible via HTTP
       ansible.builtin.uri:
         url: http://127.0.0.1:8123/
@@ -132,14 +134,18 @@
 # === PLAY 2: Установка и настройка Vector ===
 - name: Install Vector
   hosts: vector
+  tags:
+    - vector
   become: true
 
+  # Хендлер: перезапуск vector при изменении конфига
   handlers:
-    # Хендлер: перезапуск vector при изменении конфига
     - name: Restart vector
       ansible.builtin.service:
         name: vector
         state: restarted
+      args:
+        daemon_reload: yes
 
   tasks:
     # Скачиваем официальный .deb дистрибутив Vector
@@ -161,26 +167,70 @@
         src: templates/vector.toml.j2
         dest: /etc/vector/vector.toml
         mode: '0644'
-      notify: Restart vector  # если изменился конфиг — перезапускаем
 
-    # Убеждаемся, что vector включён и запущен через systemd
+    # Проверка наличия конфига перед валидацией
+    - name: Ensure Vector config exists before restart
+      ansible.builtin.stat:
+        path: /etc/vector/vector.toml
+      register: config_stat
+
+    # Проверка корректности конфигурационного файла
+    - name: Validate Vector config before restart
+      ansible.builtin.command: "vector validate /etc/vector/vector.toml"
+      changed_when: false
+      ignore_errors: no
+      when: config_stat.stat.exists
+
+    # Поиск systemd unit-файла Vector
+    - name: Find Vector systemd unit file path
+      ansible.builtin.find:
+        paths:
+          - /etc/systemd/system
+          - /lib/systemd/system
+          - /usr/lib/systemd/system
+        patterns: 'vector.service'
+      register: vector_unit_file
+
+    # Ошибка, если unit-файл не найден
+    - name: Fail if Vector systemd unit file not found
+      ansible.builtin.fail:
+        msg: "Vector systemd unit file not found in expected locations!"
+      when: vector_unit_file.matched == 0
+
+    # Обновляем ExecStart для использования кастомного конфига
+    - name: Update ExecStart in Vector unit to use custom config
+      ansible.builtin.lineinfile:
+        path: "{{ vector_unit_file.files[0].path }}"
+        regexp: '^ExecStart='
+        line: 'ExecStart=/usr/bin/vector --config /etc/vector/vector.toml'
+        backrefs: no
+      notify: Restart vector
+
+    # Убедиться, что vector работает и в автозагрузке
     - name: Ensure vector service is running
       ansible.builtin.systemd:
         name: vector
         enabled: true
         state: started
 
-    # Создаём тестовый лог на сервере Vector
-    - name: Create test log entry for Vector
-      ansible.builtin.shell: |
-        echo "2025-04-05T12:00:00 INFO: Test log message from Vector" | sudo tee -a /var/log/test.log > /dev/null
-      args:
-        executable: /bin/bash
+    # Создание тестового файла для логов
+    - name: Ensure test log file exists
+      ansible.builtin.file:
+        path: /var/log/test.log
+        state: touch
+        mode: '0644'
 
-    # Ждём несколько секунд, чтобы Vector успел обработать файл
+    # Добавляем тестовую строку в лог
+    - name: Append test log entry for Vector
+      ansible.builtin.lineinfile:
+        path: /var/log/test.log
+        line: "2025-05-18T11:06:00 INFO: Test log message from Vector"
+        create: yes
+
+    # Ждём, пока Vector обработает лог
     - name: Wait for Vector to process the new log
       ansible.builtin.pause:
-        seconds: 5
+        seconds: 60
 
     # Проверяем, появилась ли запись в ClickHouse
     - name: Check if test log is in ClickHouse
@@ -196,6 +246,12 @@
       ignore_errors: no
       changed_when: false
 
+    # Отладка: вывод результата запроса
+    - name: Debug ClickHouse query result
+      ansible.builtin.debug:
+        var: ch_query_result.stdout_lines
+
+    # Завершаем с ошибкой, если лог не найден
     - name: Fail if test log not found in ClickHouse
       ansible.builtin.assert:
         that:
