@@ -344,6 +344,7 @@
         src: "/tmp/lighthouse.zip"
         dest: "/var/www"
         remote_src: true
+      when: not ansible_check_mode
 
     # Переименовываем директорию в стандартную
     - name: Move Lighthouse static files to target location
@@ -402,6 +403,7 @@
           - "'LightHouse' in lighthouse_http.content or 'VKCOM' in lighthouse_http.content"
         fail_msg: "LightHouse UI is NOT accessible or content is incorrect."
         success_msg: "LightHouse UI is working."
+      when: not ansible_check_mode
 
     # Проверка соединения с ClickHouse с хоста LightHouse
     - name: Test connection to ClickHouse from LightHouse
@@ -418,3 +420,4 @@
           - "'Ok.' in ch_response.content"
         fail_msg: "LightHouse cannot reach ClickHouse at port 8123."
         success_msg: "ClickHouse is reachable from LightHouse."
+      when: not ansible_check_mode

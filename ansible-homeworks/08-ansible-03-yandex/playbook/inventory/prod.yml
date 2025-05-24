@@ -2,15 +2,15 @@
 clickhouse:
   hosts:
     clickhouse-01:
-      ansible_host: 158.160.116.74
+      ansible_host: 84.201.172.29
       ansible_user: avryahov
 vector:
   hosts:
     vector-01:
-      ansible_host: 89.169.136.74
+      ansible_host: 158.160.100.111
       ansible_user: avryahov
 lighthouse:
   hosts:
     lighthouse-01:
-      ansible_host: 158.160.105.220
+      ansible_host: 130.193.48.65
       ansible_user: avryahov
