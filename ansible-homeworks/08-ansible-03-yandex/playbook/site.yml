@@ -289,18 +289,18 @@
 
   # Предзадачи
   pre_tasks:
-  # Установка unzip
-  - name: Install unzip (Debian)
-    ansible.builtin.apt:
-      name: unzip
-      state: present
-    when: ansible_os_family == 'Debian'
+    # Установка unzip
+    - name: Install unzip (Debian)
+      ansible.builtin.apt:
+        name: unzip
+        state: present
+      when: ansible_os_family == 'Debian'
 
-  - name: Install unzip (RedHat)
-    ansible.builtin.dnf:
-      name: unzip
-      state: present
-    when: ansible_os_family == 'RedHat'
+    - name: Install unzip (RedHat)
+      ansible.builtin.dnf:
+        name: unzip
+        state: present
+      when: ansible_os_family == 'RedHat'
 
   # Хендлер: перезапуск nginx при изменениях
   handlers:
@@ -364,7 +364,12 @@
         src: templates/lighthouse-nginx.conf.j2
         dest: /etc/nginx/sites-available/lighthouse.conf
         mode: '0644'
-      notify: Restart nginx
+
+    # Удаляем конфиг nginx по умолчанию
+    - name: Clean up Nginx default config
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
 
     # Ссылка в sites-enabled
     - name: Enable Lighthouse site
