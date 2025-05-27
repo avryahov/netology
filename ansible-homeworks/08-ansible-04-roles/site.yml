@@ -1,0 +1,66 @@
+# === PLAY 1: Установка ClickHouse ===
+- name: Install ClickHouse
+  hosts: clickhouse
+  become: true
+  tags:
+    - clickhouse
+
+  # Переменная версии ClickHouse
+  vars:
+    clickhouse_version: "22.3.3.44"
+
+  pre_tasks:
+    # Установка дополнительной библиотеки python3 по работе с xml
+    - name: Ensure python3-lxml is installed (required for xml module)
+      ansible.builtin.apt:
+        name: python3-lxml
+        state: present
+        update_cache: true
+
+  roles:
+    - role: clickhouse
+
+# === PLAY 2: Установка и настройка ClickHouse БД (дополнительная роль) ===
+- name: Setup ClickHouse database schema
+  hosts: clickhouse
+  become: true
+  tags:
+    - clickhouse-db
+
+  roles:
+    - role: clickhouse-db-setup
+
+# === PLAY 3: Установка и настройка Vector ===
+- name: Install Vector
+  hosts: vector
+  become: true
+  tags:
+    - vector
+
+  roles:
+    - role: vector-role
+
+# === PLAY 4: Установка и настройка LightHouse ===
+- name: Install LightHouse
+  hosts: lighthouse
+  become: true
+  tags:
+    - lighthouse
+
+  pre_tasks:
+    # Установка unzip для Debian
+    - name: Install unzip (Debian)
+      ansible.builtin.apt:
+        name: unzip
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    # Установка unzip для RedHat
+    - name: Install unzip (RedHat)
+      ansible.builtin.dnf:
+        name: unzip
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+  roles:
+    - role: lighthouse-role

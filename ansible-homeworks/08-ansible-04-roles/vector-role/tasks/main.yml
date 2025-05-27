@@ -1,0 +1,75 @@
+#SPDX-License-Identifier: MIT-0
+---
+- name: Download Vector .deb package
+  ansible.builtin.get_url:
+    url: "https://packages.timber.io/vector/ {{ vector_version }}/vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
+    dest: "./vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
+    mode: '0644'
+
+- name: Install Vector via dpkg
+  become: true
+  ansible.builtin.command:
+    cmd: "dpkg -i ./vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
+  register: dpkg_result
+  changed_when: false
+  until: dpkg_result is succeeded
+
+- name: Deploy Vector config
+  become: true
+  ansible.builtin.template:
+    src: templates/vector.toml.j2
+    dest: /etc/vector/vector.toml
+    mode: '0644'
+
+- name: Ensure Vector config exists before restart
+  become: true
+  ansible.builtin.stat:
+    path: /etc/vector/vector.toml
+  register: config_stat
+
+- name: Validate Vector config before restart
+  become: true
+  ansible.builtin.command: "vector validate /etc/vector/vector.toml"
+  changed_when: false
+  when: config_stat.stat.exists
+
+- name: Find Vector systemd unit file path
+  become: true
+  ansible.builtin.find:
+    paths:
+      - /etc/systemd/system
+      - /lib/systemd/system
+      - /usr/lib/systemd/system
+    patterns: 'vector.service'
+  register: vector_unit_file
+
+- name: Fail if Vector systemd unit file not found
+  become: true
+  ansible.builtin.fail:
+    msg: "Vector systemd unit file not found in expected locations!"
+  when: vector_unit_file.matched == 0
+
+- name: Update ExecStart in Vector unit to use custom config
+  become: true
+  ansible.builtin.lineinfile:
+    path: "{{ vector_unit_file.files[0].path }}"
+    regexp: '^ExecStart='
+    line: 'ExecStart=/usr/bin/vector --config /etc/vector/vector.toml'
+    backrefs: false
+  notify: Restart vector
+
+- name: Flush handlers (after unit file change)
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Vector to become available
+  become: true
+  ansible.builtin.wait_for:
+    state: started
+    timeout: 60
+
+- name: Ensure vector service is running
+  become: true
+  ansible.builtin.systemd:
+    name: vector
+    enabled: true
+    state: started

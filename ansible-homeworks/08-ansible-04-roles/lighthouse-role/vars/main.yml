@@ -1,0 +1,5 @@
+#SPDX-License-Identifier: MIT-0
+---
+lighthouse_version: master
+lighthouse_dest: /var/www/lighthouse
+ansible_python_interpreter: /usr/bin/python3.12

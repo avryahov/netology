@@ -1,0 +1,4 @@
+#SPDX-License-Identifier: MIT-0
+---
+clickhouse_database: logs
+clickhouse_table: server_logs
