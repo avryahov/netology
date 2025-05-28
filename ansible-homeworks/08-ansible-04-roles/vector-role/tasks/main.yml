@@ -1,40 +1,42 @@
 #SPDX-License-Identifier: MIT-0
 ---
+# Скачиваем официальный .deb дистрибутив Vector
 - name: Download Vector .deb package
   ansible.builtin.get_url:
     url: "https://packages.timber.io/vector/{{ vector_version }}/vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
     dest: "./vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
     mode: '0644'
 
+# Устанавливаем Vector
 - name: Install Vector via dpkg
-  become: true
   ansible.builtin.command:
     cmd: "dpkg -i ./vector_{{ vector_version }}-1{{ vector_package_suffix }}.deb"
   register: dpkg_result
   changed_when: false
   until: dpkg_result is succeeded
 
+# Копируем конфигурационный файл из шаблона
 - name: Deploy Vector config
-  become: true
   ansible.builtin.template:
     src: templates/vector.toml.j2
     dest: /etc/vector/vector.toml
     mode: '0644'
 
+# Проверка наличия конфига перед валидацией
 - name: Ensure Vector config exists before restart
-  become: true
   ansible.builtin.stat:
     path: /etc/vector/vector.toml
   register: config_stat
 
+# Проверка корректности конфигурационного файла
 - name: Validate Vector config before restart
-  become: true
   ansible.builtin.command: "vector validate /etc/vector/vector.toml"
   changed_when: false
+  ignore_errors: false
   when: config_stat.stat.exists
 
+# Поиск systemd unit-файла Vector
 - name: Find Vector systemd unit file path
-  become: true
   ansible.builtin.find:
     paths:
       - /etc/systemd/system
@@ -43,14 +45,19 @@
     patterns: 'vector.service'
   register: vector_unit_file
 
+# Отладка: путь к найденному unit-файлу
+- name: Debug vector unit file path
+  ansible.builtin.debug:
+    var: vector_unit_file.files[0].path
+
+# Ошибка, если unit-файл не найден
 - name: Fail if Vector systemd unit file not found
-  become: true
   ansible.builtin.fail:
     msg: "Vector systemd unit file not found in expected locations!"
   when: vector_unit_file.matched == 0
 
+# Обновляем ExecStart для использования кастомного конфига
 - name: Update ExecStart in Vector unit to use custom config
-  become: true
   ansible.builtin.lineinfile:
     path: "{{ vector_unit_file.files[0].path }}"
     regexp: '^ExecStart='
@@ -58,18 +65,66 @@
     backrefs: false
   notify: Restart vector
 
+# Принудительный вызов хендлеров (рестарт vector после обновления unit)
 - name: Flush handlers (after unit file change)
   ansible.builtin.meta: flush_handlers
 
+# Ожидание запуска Vector (после рестарта)
 - name: Wait for Vector to become available
-  become: true
   ansible.builtin.wait_for:
     state: started
     timeout: 60
 
+# Убедиться, что vector работает и в автозагрузке
 - name: Ensure vector service is running
-  become: true
   ansible.builtin.systemd:
     name: vector
     enabled: true
     state: started
+
+# Создание тестового файла для логов
+- name: Ensure test log file exists
+  ansible.builtin.file:
+    path: /var/log/test.log
+    state: touch
+    mode: '0644'
+
+# Добавляем тестовую строку в лог
+- name: Append test log entry for Vector
+  ansible.builtin.lineinfile:
+    path: /var/log/test.log
+    line: "2025-05-18T11:06:00 INFO: Test log message from Vector"
+    create: true
+    mode: '0644'
+
+# Ждём, пока Vector обработает лог
+- name: Wait for Vector to process the new log
+  ansible.builtin.pause:
+    seconds: 60
+
+# Проверяем, появилась ли запись в ClickHouse
+- name: Check if test log is in ClickHouse
+  delegate_to: clickhouse-01  # Выполняется на хосте ClickHouse
+  ansible.builtin.command: |
+    clickhouse-client --host=127.0.0.1 -q "
+      SELECT * FROM logs.server_logs
+      WHERE message LIKE '%Test log message from Vector%'
+      LIMIT 1;
+    "
+  register: ch_query_result
+  ignore_errors: false
+  changed_when: false
+
+# Отладка: вывод результата запроса
+- name: Debug ClickHouse query result
+  ansible.builtin.debug:
+    var: ch_query_result.stdout_lines
+
+# Завершаем с ошибкой, если лог не найден
+- name: Fail if test log not found in ClickHouse
+  ansible.builtin.assert:
+    that:
+      - "'Test log message from Vector' in ch_query_result.stdout"
+    fail_msg: "Test log NOT found in ClickHouse. Integration failed."
+    success_msg: "Test log successfully found in ClickHouse. Integration works!"
+

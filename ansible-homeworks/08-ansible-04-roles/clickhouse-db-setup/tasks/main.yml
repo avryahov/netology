@@ -1,15 +1,37 @@
 #SPDX-License-Identifier: MIT-0
 ---
+# Проверка работы клиента
+- name: Wait for ClickHouse to become available
+  ansible.builtin.command: "clickhouse-client -q 'SELECT 1'"
+  register: ch_ready
+  retries: 10
+  delay: 3
+  until: ch_ready.rc == 0
+  changed_when: false
+
+# Создаём БД logs в ClickHouse
 - name: Create database {{ clickhouse_database }}
   ansible.builtin.command: >
-    clickhouse-client --host=127.0.0.1 -q "CREATE DATABASE IF NOT EXISTS {{ clickhouse_database }};"
+    clickhouse-client -q "CREATE DATABASE IF NOT EXISTS {{ clickhouse_database }};"
 
+# Создание таблицы server_logs
 - name: Create table {{ clickhouse_table }}
   ansible.builtin.command: >
-    clickhouse-client --host=127.0.0.1 -q "
+    clickhouse-client -q "
     CREATE TABLE IF NOT EXISTS {{ clickhouse_database }}.{{ clickhouse_table }} (
       timestamp String,
       level String,
       message String
     ) ENGINE = MergeTree()
     ORDER BY tuple(timestamp);"
+
+# Проверка наличия таблицы
+- name: Verify that table server_logs exists
+  ansible.builtin.command: |
+    clickhouse-client --host=127.0.0.1 -q 'SHOW TABLES FROM logs;'
+  when: not ansible_check_mode
+  register: tables
+  until: "'server_logs' in tables.stdout"
+  retries: 5
+  delay: 2
+  changed_when: false
