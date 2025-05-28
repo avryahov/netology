@@ -7,7 +7,11 @@
 
   # Переменная версии ClickHouse
   vars:
+    ansible_python_interpreter: /usr/bin/python3.12
+    ansible_os_family: "Debian"
     clickhouse_version: "22.3.3.44"
+    clickhouse_http_port: 8123
+    clickhouse_tcp_port: 9000
 
   pre_tasks:
     # Установка дополнительной библиотеки python3 по работе с xml
@@ -20,12 +24,59 @@
   roles:
     - role: clickhouse
 
+  post_tasks:
+    # Удаление старого конфгиа по умолчанию
+    - name: Ensure no override file is blocking startup
+      become: true
+      ansible.builtin.file:
+        path: /etc/clickhouse-server/config.d/config.xml
+        state: absent
+
+    # Удаление старого конфгиа пользователя
+    - name: Ensure no override file is blocking startup
+      become: true
+      ansible.builtin.file:
+        path: /etc/clickhouse-server/users.d/users.xml
+        state: absent
+
+    # Проверка наличия прослушивания хоста
+    - name: Ensure listen_host is set to allow external connections
+      become: true
+      community.general.xml: # noqa syntax-check[unknown-module]
+        file: /etc/clickhouse-server/config.xml
+        xpath: /clickhouse/listen_host
+        value: "0.0.0.0"
+        state: present
+      notify: Restart Clickhouse Service
+
+    - name: Flush handlers now
+      ansible.builtin.meta: flush_handlers
+
+    # Проверка старта сервера
+    - name: Check ClickHouse service status
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: started
+      register: clickhouse_status
+
 # === PLAY 2: Установка и настройка ClickHouse БД (дополнительная роль) ===
 - name: Setup ClickHouse database schema
   hosts: clickhouse
   become: true
   tags:
     - clickhouse-db
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.12
+    clickhouse_database: logs
+    clickhouse_table: server_logs
+
+  pre_tasks:
+    - name: Ensure ClickHouse is running before proceeding
+      ansible.builtin.systemd:
+        name: clickhouse-server
+        state: started
+        enabled: true
 
   roles:
     - role: clickhouse-db-setup
@@ -36,6 +87,9 @@
   become: true
   tags:
     - vector
+
+  vars:
+    clickhouse_url: "192.168.1.14"
 
   roles:
     - role: vector-role

@@ -1,44 +1,34 @@
 #SPDX-License-Identifier: MIT-0
 ---
-- name: Install unzip
-  block:
-    - name: Install unzip (Debian)
-      ansible.builtin.apt:
-        name: unzip
-        state: present
-      when: ansible_os_family == 'Debian'
-    - name: Install unzip (RedHat)
-      ansible.builtin.dnf:
-        name: unzip
-        state: present
-      when: ansible_os_family == 'RedHat'
-
+# Установка nginx
 - name: Install Nginx
-  block:
-    - name: Install Nginx (Debian)
-      ansible.builtin.apt:
-        name: nginx
-        state: present
-        update_cache: true
-      when: ansible_os_family == 'Debian'
-    - name: Install Nginx (RedHat)
-      ansible.builtin.dnf:
-        name: nginx
-        state: present
-      when: ansible_os_family == 'RedHat'
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
 
+- name: Install Nginx (RedHat)
+  ansible.builtin.dnf:
+    name: nginx
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+# Создание директории под Lighthouse
 - name: Ensure lighthouse directory exists
   ansible.builtin.file:
     path: "{{ lighthouse_dest }}"
     state: directory
     mode: '0755'
 
+# Скачиваем LightHouse из GitHub
 - name: Download Lighthouse static files
   ansible.builtin.get_url:
-    url: "https://github.com/VKCOM/lighthouse/archive/refs/heads/ {{ lighthouse_version }}.zip"
+    url: "https://github.com/VKCOM/lighthouse/archive/refs/heads/{{ lighthouse_version }}.zip"
     dest: "/tmp/lighthouse.zip"
     mode: '0644'
 
+# Распаковываем
 - name: Unarchive Lighthouse
   ansible.builtin.unarchive:
     src: "/tmp/lighthouse.zip"
@@ -46,28 +36,33 @@
     remote_src: true
   when: not ansible_check_mode
 
+# Переименовываем директорию в стандартную
 - name: Move Lighthouse static files to target location
   ansible.builtin.command:
     cmd: mv /var/www/lighthouse-{{ lighthouse_version }} {{ lighthouse_dest }}
-    args:
-      creates: "{{ lighthouse_dest }}"
+  args:
+    creates: "{{ lighthouse_dest }}"
 
+# Удаляем zip-архив
 - name: Clean up lighthouse zip file
   ansible.builtin.file:
     path: /tmp/lighthouse.zip
     state: absent
 
+# Копируем конфиг nginx
 - name: Deploy Nginx config for Lighthouse
   ansible.builtin.template:
     src: templates/lighthouse-nginx.conf.j2
     dest: /etc/nginx/sites-available/lighthouse.conf
     mode: '0644'
 
+# Удаляем конфиг nginx по умолчанию
 - name: Clean up Nginx default config
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
 
+# Ссылка в sites-enabled
 - name: Enable Lighthouse site
   ansible.builtin.file:
     src: /etc/nginx/sites-available/lighthouse.conf
@@ -76,12 +71,14 @@
     force: true
   notify: Restart nginx
 
+# Убедимся, что nginx запущен
 - name: Ensure nginx is running
   ansible.builtin.service:
     name: nginx
     state: started
     enabled: true
 
+# Проверка, что LightHouse интерфейс доступен по HTTP
 - name: Check LightHouse HTTP response on localhost
   ansible.builtin.uri:
     url: http://localhost/
@@ -89,14 +86,16 @@
     return_content: true
   register: lighthouse_http
 
+# Убедимся, что в HTML содержится что-то от LightHouse
 - name: Assert LightHouse HTML page is present
   ansible.builtin.assert:
     that:
       - "'LightHouse' in lighthouse_http.content or 'VKCOM' in lighthouse_http.content"
     fail_msg: "LightHouse UI is NOT accessible or content is incorrect."
     success_msg: "LightHouse UI is working."
-    when: not ansible_check_mode
+  when: not ansible_check_mode
 
+# Проверка соединения с ClickHouse с хоста LightHouse
 - name: Test connection to ClickHouse from LightHouse
   ansible.builtin.uri:
     url: "http://{{ hostvars['clickhouse-01']['ansible_host'] }}:8123/"
@@ -104,10 +103,11 @@
     return_content: true
   register: ch_response
 
+# Проверка, что ClickHouse вернул 'Ok.'
 - name: Assert ClickHouse returned OK from LightHouse
   ansible.builtin.assert:
     that:
       - "'Ok.' in ch_response.content"
     fail_msg: "LightHouse cannot reach ClickHouse at port 8123."
     success_msg: "ClickHouse is reachable from LightHouse."
-    when: not ansible_check_mode
+  when: not ansible_check_mode

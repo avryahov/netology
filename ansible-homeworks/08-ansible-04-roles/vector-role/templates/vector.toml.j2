@@ -14,7 +14,7 @@ parsed = parse_regex!(.message, r'^(?P<timestamp>[^ ]+) (?P<level>[A-Z]+): (?P<m
 [sinks.clickhouse]
 type = "clickhouse"
 inputs = ["parse_logs"]
-endpoint = "http://192.168.1.4:8123"
+endpoint = "http://{{ clickhouse_url }}:8123"
 database = "logs"
 table = "server_logs"
 compression = "none"
