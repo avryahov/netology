@@ -1,0 +1,36 @@
+services:
+  jira:
+    container_name: jira
+    image: atlassian/jira-software
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - var:/var/atlassian/application-data/jira
+      - opt:/opt/atlassian/jira
+      - ./activate:/opt/atlassian/atlassian-agent/
+    environment:
+      - 'SATENV_JVM_MINIMUM_MEMORY=2048m'
+      - 'SATENV_JVM_MAXIMUM_MEMORY=4096m'
+      - 'JIRA_PROXY_NAME=jira.domain.local'
+      - 'JIRA_PROXY_PORT=8443'
+      - 'JIRA_PROXY_SCHEME=HTTPS'
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: jiradb
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: jiradb
+      PGDATA: /data/postgres
+    volumes:
+      - ./postgres:/data/postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  var:
+    external: false
+  opt:
+    external: false
