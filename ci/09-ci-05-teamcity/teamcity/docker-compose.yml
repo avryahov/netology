@@ -1,4 +1,3 @@
-version: "3"
 services:
   teamcity:
     image: jetbrains/teamcity-server

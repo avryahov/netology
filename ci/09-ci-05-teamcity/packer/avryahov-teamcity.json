@@ -26,6 +26,36 @@
         "chmod +x /tmp/setup-docker.sh",
         "/tmp/setup-docker.sh"
       ]
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo mkdir -p /home/ubuntu/teamcity",
+        "sudo chown ubuntu:ubuntu /home/ubuntu/teamcity"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "../teamcity/docker-compose.yml",
+      "destination": "/home/ubuntu/teamcity/docker-compose.yml"
+    },
+    {
+      "type": "file",
+      "source": "../scripts/start-teamcity.sh",
+      "destination": "/tmp/start-teamcity.sh"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "chmod +x /tmp/start-teamcity.sh",
+        "sudo mv /tmp/start-teamcity.sh /usr/local/bin/start-teamcity.sh",
+        "sudo chown root:root /usr/local/bin/start-teamcity.sh"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "../scripts/teamcity.service",
+      "destination": "/tmp/teamcity.service"
     }
   ]
 }

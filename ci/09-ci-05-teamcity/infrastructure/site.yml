@@ -11,11 +11,16 @@
       become: true
       user:
         name: "{{ nexus_user_name }}"
-    - name: Install JDK
+    - name: Update apt package index
       become: true
-      package:
-        name: [java-1.8.0-openjdk, java-1.8.0-openjdk-devel]
+      apt:
+        update_cache: yes
+    - name: Install OpenJDK 8
+      become: true
+      apt:
+        name: openjdk-8-jdk
         state: present
+      ignore_errors: yes
   tasks:
     - name: Create Nexus directories
       become: true
@@ -30,6 +35,12 @@
         - "{{ nexus_directory_data }}/etc"
         - "{{ nexus_directory_package }}"
         - "{{ nexus_directory_tmp }}"
+
+    - name: Install ACL package
+      become: true
+      package:
+        name: acl
+        state: present
 
     - name: Download Nexus
       become: true

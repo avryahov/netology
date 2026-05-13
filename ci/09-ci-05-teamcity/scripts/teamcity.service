@@ -1,0 +1,13 @@
+[Unit]
+Description=TeamCity Server and Agent (Docker Compose)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/start-teamcity.sh
+ExecStop=/usr/bin/docker compose down
+
+[Install]
+WantedBy=multi-user.target
