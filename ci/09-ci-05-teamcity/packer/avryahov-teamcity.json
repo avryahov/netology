@@ -1,0 +1,61 @@
+{
+  "builders": [
+    {
+      "type": "yandex",
+      "token": "{{user `TOKEN`}}",
+      "folder_id": "{{user `FOLDER_ID`}}",
+      "zone": "{{user `DEFAULT_ZONE`}}",
+      "image_name": "{{user `IMAGE_NAME`}}",
+      "image_description": "my custom ubuntu with docker",
+      "source_image_family": "ubuntu-2004-lts",
+      "subnet_id": "{{user `SUBNET_ID`}}",
+      "use_ipv4_nat": true,
+      "disk_type": "{{user `DISK_TYPE`}}",
+      "ssh_username": "ubuntu"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "../scripts/setup-docker.sh",
+      "destination": "/tmp/setup-docker.sh"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "chmod +x /tmp/setup-docker.sh",
+        "/tmp/setup-docker.sh"
+      ]
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo mkdir -p /home/ubuntu/teamcity",
+        "sudo chown ubuntu:ubuntu /home/ubuntu/teamcity"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "../teamcity/docker-compose.yml",
+      "destination": "/home/ubuntu/teamcity/docker-compose.yml"
+    },
+    {
+      "type": "file",
+      "source": "../scripts/start-teamcity.sh",
+      "destination": "/tmp/start-teamcity.sh"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "chmod +x /tmp/start-teamcity.sh",
+        "sudo mv /tmp/start-teamcity.sh /usr/local/bin/start-teamcity.sh",
+        "sudo chown root:root /usr/local/bin/start-teamcity.sh"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "../scripts/teamcity.service",
+      "destination": "/tmp/teamcity.service"
+    }
+  ]
+}
