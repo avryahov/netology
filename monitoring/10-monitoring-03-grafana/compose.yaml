@@ -1,28 +1,29 @@
-version: '3.8'
-
 services:
   prometheus:
-    image: prom/prometheus:v2.24.1
+    image: prom/prometheus:v2.54.1
     container_name: prometheus
+    user: "0:0"
     volumes:
-      - ./prometheus:/etc/prometheus:Z
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.size=5GB'
       - '--web.enable-lifecycle'
-    restart: unless-stopped
-    depends_on:
-      - nodeexporter
-    expose:
-      - 9090
+    ports:
+      - "9090:9090"
     networks:
       - monitor-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   nodeexporter:
-    image: prom/node-exporter:v1.0.1
+    image: prom/node-exporter:v1.8.2
     container_name: nodeexporter
     volumes:
       - /proc:/host/proc:ro
@@ -30,39 +31,34 @@ services:
       - /:/rootfs:ro
     command:
       - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
-    restart: unless-stopped
-    expose:
-      - 9100
+      - '--path.rootfs=/rootfs'
+    ports:
+      - "9100:9100"
     networks:
       - monitor-net
 
-
   grafana:
-    image: grafana/grafana:7.4.0
+    image: grafana/grafana:11.3.0
     container_name: grafana
+    user: "0:0"
     volumes:
       - grafana_data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-    restart: unless-stopped
-    depends_on:
-      - prometheus
     ports:
-      - 3000:3000
-    expose:
-      - 3000
+      - "3000:3000"
     networks:
       - monitor-net
+    depends_on:
+      - prometheus
 
 networks:
   monitor-net:
     driver: bridge
 
 volumes:
-  prometheus_data: {}
-  grafana_data: {}
+  prometheus_data:
+  grafana_data:
