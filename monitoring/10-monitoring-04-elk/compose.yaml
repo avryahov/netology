@@ -1,0 +1,84 @@
+services:
+  elasticsearch:
+    image: elasticsearch:8.14.0
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "http.host=0.0.0.0"
+      - xpack.security.enabled=false
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  kibana:
+    image: kibana:8.14.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+    networks:
+      - elastic
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+  logstash:
+    image: logstash:8.14.0
+    container_name: logstash
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    ports:
+      - "5046:5046"
+    volumes:
+      - ./config/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+      - ./config/logstash.yml:/opt/logstash/config/logstash.yml
+    networks:
+      - elastic
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+  filebeat:
+    image: elastic/filebeat:8.14.0
+    container_name: filebeat
+    privileged: true
+    user: root
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./config/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - /var/lib/docker:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      logstash:
+        condition: service_started
+    networks:
+      - elastic
+  app:
+    image: python:3.12-alpine
+    container_name: app
+    volumes:
+      - ./pinger/:/opt/
+    entrypoint: python3 /opt/run.py
+volumes:
+  es_data:
+    driver: local
+networks:
+  elastic:
+    driver: bridge
