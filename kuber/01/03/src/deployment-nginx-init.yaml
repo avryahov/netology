@@ -17,7 +17,7 @@ spec:
             initContainers:
                 - name: init-check
                   image: busybox
-                  command: ['sh', '-c', 'until nslookup nginx-init-svc; do echo "Waiting for service..."; sleep 2; done']
+                  command: ['sh', '-c', 'nslookup nginx-init-svc.default.svc.cluster.local']
             containers:
                 - name: nginx
                   image: nginx:latest

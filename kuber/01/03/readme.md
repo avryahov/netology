@@ -229,10 +229,98 @@ kubectl exec -it multitool-test -- curl http://nginx-multitool-svc
 
 ------
 
-### Правила приема работы
+### Ответ:
 
-1. Домашняя работа оформляется в своем Git-репозитории в файле README.md. Выполненное домашнее задание пришлите ссылкой на .md-файл в вашем репозитории.
-2. Файл README.md должен содержать скриншоты вывода необходимых команд `kubectl` и скриншоты результатов.
-3. Репозиторий должен содержать файлы манифестов и ссылки на них в файле README.md.
+**Развернул Deployment `nginx-init` с Init-контейнером `busybox` и основным контейнером `nginx`**
 
-------
+**Манифест `deployment-nginx-init.yaml`:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-init
+  labels:
+    app: nginx-init
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-init
+  template:
+    metadata:
+      labels:
+        app: nginx-init
+    spec:
+      initContainers:
+        - name: init-check
+          image: busybox
+          command: ['sh', '-c', 'until nslookup nginx-init-svc; do echo "Waiting for service..."; sleep 2; done']
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+```
+
+**Применил манифест Deployment (Service на данном этапе не создан):**
+
+```bash
+kubectl apply -f deployment-nginx-init.yaml
+kubectl get pods
+```
+
+![20-2026-06-03.png](screens/20-2026-06-03.png)
+
+Pod находится в статусе `Init:0/1` — основной контейнер `nginx` не стартует, так как Init-контейнер `busybox` циклически ожидает появления DNS-записи сервиса `nginx-init-svc`.
+
+**Проверил логи Init-контейнера:**
+
+```bash
+kubectl logs nginx-init-66984c785b-t7fsc -c init-check
+```
+
+![21-2026-06-03.png](screens/21-2026-06-03.png)
+
+![22-2026-06-03.png](screens/22-2026-06-03.png)
+
+**Создал Service для Deployment:**
+
+Манифест `service-nginx-init.yaml`:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-init-svc
+spec:
+  selector:
+    app: nginx-init
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+```
+
+```bash
+kubectl apply -f service-nginx-init.yaml
+kubectl get svc
+```
+
+![23-2026-06-03.png](screens/23-2026-06-03.png)
+
+**Проверил состояние пода после запуска сервиса:**
+
+```bash
+kubectl get pods
+```
+
+![24-2026-06-03.png](screens/24-2026-06-03.png)
+
+![25-2026-06-03.png](screens/25-2026-06-03.png)
+
+Init-контейнер успешно разрешил имя сервиса, завершил свою работу, после чего автоматически запустился основной контейнер `nginx`. Pod перешёл в статус `Running` с READY `1/1`.
+
+
+> Возникла проблема: Init-контейнер не завершался после создания Service. Причина — `nslookup` в busybox всегда выводит адрес DNS-сервера (10.96.0.10), даже при ошибке NXDOMAIN, из-за чего цикл `until` не мог корректно определить момент успешного разрешения DNS. Решение — убрать цикл и использовать одиночный вызов `nslookup nginx-init-svc.default.svc.cluster.local` с полным FQDN-именем: команда возвращает exit code 0 только при успешном разрешении, после чего Init-контейнер завершается и стартует основной контейнер nginx.
