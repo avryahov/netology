@@ -74,6 +74,135 @@
 - Скриншоты проверки доступа (`curl` или браузер).
 
 ---
+
+### Ответ:
+
+**Шаг 1. Создал Deployment с двумя контейнерами.**
+
+Манифест `src/task1/deployment-multi-container.yaml`:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-container-app
+  labels:
+    app: multi-container-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: multi-container-app
+  template:
+    metadata:
+      labels:
+        app: multi-container-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+        - name: multitool
+          image: wbitt/network-multitool:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+```
+
+Применил манифест и проверил статус подов:
+```bash
+kubectl apply -f src/task1/deployment-multi-container.yaml
+kubectl get pods
+```
+
+![task1-01-2026-06-03.png](screens/task1-01-2026-06-03.png)
+
+**Шаг 2. Создал Service типа ClusterIP.**
+
+Манифест `src/task1/service-clusterip.yaml`:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: multi-container-svc
+spec:
+  selector:
+    app: multi-container-app
+  ports:
+    - name: nginx-port
+      protocol: TCP
+      port: 9001
+      targetPort: 80
+    - name: multitool-port
+      protocol: TCP
+      port: 9002
+      targetPort: 8080
+  type: ClusterIP
+```
+
+```bash
+kubectl apply -f src/task1/service-clusterip.yaml
+kubectl get svc multi-container-svc
+```
+
+![task1-02-2026-06-03.png](screens/task1-02-2026-06-03.png)
+
+![task1-03-2026-06-03.png](screens/task1-03-2026-06-03.png)
+
+**Шаг 3. Проверил доступность изнутри кластера.**
+
+Запустил тестовый Pod и выполнил запросы:
+```bash
+kubectl run test-pod --image=wbitt/network-multitool --rm -it -- sh
+curl multi-container-svc:9001
+curl multi-container-svc:9002
+```
+
+![task1-04-2026-06-03.png](screens/task1-04-2026-06-03.png)
+
+![task1-05-2026-06-03.png](screens/task1-05-2026-06-03.png)
+
+![task1-06-2026-06-03.png](screens/task1-06-2026-06-03.png)
+
+**Шаг 4. Создал Service типа NodePort.**
+
+Манифест `src/task1/service-nodeport.yaml`:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: multi-container-nodeport
+spec:
+  selector:
+    app: multi-container-app
+  ports:
+    - name: nginx-port
+      protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+  type: NodePort
+```
+
+```bash
+kubectl apply -f src/task1/service-nodeport.yaml
+kubectl get svc multi-container-nodeport
+```
+
+![task1-07-2026-06-03.png](screens/task1-07-2026-06-03.png)
+
+**Шаг 5. Проверил доступ с локального компьютера.**
+
+![task1-09-2026-06-03.png](screens/task1-09-2026-06-03.png)
+
+![task1-08-2026-06-03.png](screens/task1-08-2026-06-03.png)
+
+> *NodePort Service работает корректно — порт 30080 открыт на ноде кластера. Для проверки доступа в Minikube на macOS используется штатная команда `minikube service`, которая создаёт туннель между localhost и VM. Это стандартный механизм Minikube для локальной разработки (прямой доступ к IP виртуальной машины 192.168.49.2 заблокирован на уровне Docker). В production-кластере (bare metal или облако) доступ осуществлялся бы напрямую по `curl 192.168.49.2:30080`.*
+
+---
+
 ## **Задание 2: Настройка Ingress**
 ### **Задача**
 Развернуть два приложения (`frontend` и `backend`) и обеспечить доступ к ним через **Ingress** по разным путям.
