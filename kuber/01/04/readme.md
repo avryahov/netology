@@ -236,75 +236,204 @@ kubectl get svc multi-container-nodeport
 - Скриншоты проверки доступа (`curl` или браузер).
 
 ---
-## Шаблоны манифестов с учебными комментариями
-### **1. Deployment (nginx + multitool)**
+
+### Ответ:
+
+**Шаг 1. Развернул два Deployment.**
+
+Манифест `src/task2/deployment-frontend.yaml`:
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: # ПРИМЕР: "multi-container-app"
+  name: frontend
+  labels:
+    app: frontend
 spec:
-  replicas: # ЗАДАНИЕ: Укажите количество реплик
+  replicas: 2
   selector:
     matchLabels:
-      app: # ДОПОЛНИТЕ: Метка для селектора
+      app: frontend
   template:
     metadata:
       labels:
-        app: # ПОВТОРИТЕ метку из selector.matchLabels
+        app: frontend
     spec:
       containers:
- - name: # ЗАДАНИЕ: Название первого контейнера
-        image: nginx
-        ports:
- - containerPort: 80
- - name: multitool
-        image: wbitt/network-multitool
-        ports:
- - containerPort: 8080
-        env:
- - name: HTTP_PORT
-          value: "8080" # КЛЮЧЕВОЙ МОМЕНТ: Порт должен совпадать с containerPort
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
 ```
-### **2. Ingress (для frontend и backend)**
+
+Манифест `src/task2/deployment-backend.yaml`:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: multitool
+          image: wbitt/network-multitool:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+```
+
+```bash
+kubectl apply -f src/task2/deployment-frontend.yaml
+kubectl apply -f src/task2/deployment-backend.yaml
+kubectl get pods
+```
+
+![task2-01-2026-06-03.png](screens/task2-01-2026-06-03.png)
+
+![task2-02-2026-06-03.png](screens/task2-02-2026-06-03.png)
+
+**Шаг 2. Создал Service для каждого приложения.**
+
+Манифест `src/task2/service-frontend.yaml`:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+spec:
+  selector:
+    app: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+```
+
+Манифест `src/task2/service-backend.yaml`:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+```
+
+```bash
+kubectl apply -f src/task2/service-frontend.yaml
+kubectl apply -f src/task2/service-backend.yaml
+kubectl get svc
+```
+
+![task2-03-2026-06-03.png](screens/task2-03-2026-06-03.png)
+
+**Шаг 3. Включил Ingress-контроллер.**
+
+```bash
+minikube addons enable ingress
+minikube addons list
+```
+
+![task2-04-2026-06-03.png](screens/task2-04-2026-06-03.png)
+
+![task2-05-2026-06-03.png](screens/task2-05-2026-06-03.png)
+
+**Проверил, что Ingress Controller запущен:**
+
+```bash
+kubectl get pods -n ingress-nginx
+kubectl get svc -n ingress-nginx
+```
+
+![task2-06-2026-06-03.png](screens/task2-06-2026-06-03.png)
+
+Ingress Controller запущен в namespace `ingress-nginx` и получил NodePort Service.
+
+**Шаг 4. Создал Ingress.**
+
+Манифест `src/task2/ingress.yaml`:
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: # ЗАДАНИЕ: Придумайте имя, допустим example-ingress
-  annotations:  # ВАЖНО: Эта аннотация нужна для rewrite правил
+  name: app-ingress
+  annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
- - http:
-      paths:
- - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: # УКАЖИТЕ: Имя frontend Service
-            port:
-              number: 80
- - path: /api # КЛЮЧЕВОЙ ПУТЬ: API endpoint
-        pathType: Prefix
-        backend:
-          service:
-            name: # УКАЖИТЕ: Имя backend Service
-            port:
-              number: 80
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-svc
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-svc
+                port:
+                  number: 80
 ```
----
 
-## **Правила приёма работы**
-1. Домашняя работа оформляется в своём Git-репозитории в файле README.md. Выполненное домашнее задание пришлите ссылкой на .md-файл в вашем репозитории.
-2. Файл README.md должен содержать скриншоты вывода необходимых команд `kubectl` и скриншоты результатов.
-3. Репозиторий должен содержать тексты манифестов или ссылки на них в файле README.md.
+```bash
+kubectl apply -f src/task2/ingress.yaml
+kubectl get ingress
+```
 
-## **Критерии оценивания задания**
-1. Зачёт: Все задачи выполнены, манифесты корректны, есть доказательства работы (скриншоты).
-2. Доработка (на доработку задание направляется 1 раз): основные задачи выполнены, при этом есть ошибки в манифестах или отсутствуют проверочные скриншоты.
-3. Незачёт: работа выполнена не в полном объёме, есть ошибки в манифестах, отсутствуют проверочные скриншоты. Все попытки доработки израсходованы (на доработку работа направляется 1 раз). Этот вид оценки используется крайне редко.
+![task2-07-2026-06-03.png](screens/task2-07-2026-06-03.png)
 
-## **Срок выполнения задания**
-1. 5 дней на выполнение задания.
-2. 5 дней на доработку задания (в случае направления задания на доработку).
+![task2-08-2026-06-03.png](screens/task2-08-2026-06-03.png)
+
+Ingress `app-ingress` создан с правилами маршрутизации по путям `/` и `/api`.
+
+**Шаг 5. Проверил доступность.**
+
+Получил адрес Ingress Controller через Minikube:
+
+```bash
+minikube service -n ingress-nginx ingress-nginx-controller --url
+```
+
+![task2-09-2026-06-03.png](screens/task2-09-2026-06-03.png)
+
+**Проверка frontend по пути `/`:**
+
+```bash
+curl http://127.0.0.1:55824/
+```
+
+
+**Проверка backend по пути `/api`:**
+
+```bash
+curl http://127.0.0.1:55824/api
+```
+
+![task2-10-2026-06-03.png](screens/task2-10-2026-06-03.png)
+
+Получен HTML-ответ от Nginx — frontend доступен по пути `/`. Backend доступен по пути `/api`
+
+> *Для проверки Ingress в Minikube используется команда `minikube service`, которая создаёт туннель между localhost и Ingress Controller внутри VM. Это стандартный механизм Minikube для локальной разработки. В production-кластере доступ осуществлялся бы по внешнему IP балансировщика.*
