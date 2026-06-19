@@ -61,6 +61,130 @@
     - `configmap-web.yaml`
 - Скриншот вывода `curl` или браузера
 
+### Ответ:
+
+**Манифест `src/task1/configmap-web.yaml`:**
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-content
+  namespace: default
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Netology K8s Lab 2.3</title>
+    </head>
+    <body>
+      <h1>Hello from Kubernetes ConfigMap!</h1>
+      <p>Задание 1: ConfigMap подключён как Volume</p>
+    </body>
+    </html>
+```
+
+**Манифест `src/task1/deployment.yaml`:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: default
+  labels:
+    app: web-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: web-content
+              mountPath: /usr/share/nginx/html
+        - name: multitool
+          image: wbitt/network-multitool
+          ports:
+            - containerPort: 8080
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+      volumes:
+        - name: web-content
+          configMap:
+            name: web-content
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-svc
+  namespace: default
+spec:
+  selector:
+    app: web-app
+  ports:
+    - name: nginx
+      port: 80
+      targetPort: 80
+    - name: multitool
+      port: 8080
+      targetPort: 8080
+```
+
+---
+
+**1.** Применил ConfigMap и проверил его содержимое с помощью команд:
+```bash
+kubectl apply -f configmap-web.yaml
+kubectl get cm web-content
+kubectl describe cm web-content
+```
+
+![task1-01-2026-06-20.png](screens/task1-01-2026-06-20.png)
+
+**2.** Затем шли Deployment и Service:
+```bash
+kubectl apply -f deployment.yaml
+kubectl get pods -l app=web-app
+kubectl get svc web-app-svc
+```
+
+![task1-02-2026-06-20.png](screens/task1-02-2026-06-20.png)
+
+**3.** После проброса порта из ConfigMap провил страницу:
+```bash
+kubectl port-forward svc/web-app-svc 8090:80 &
+curl http://localhost:8090
+kill %1
+```
+
+![task1-03-1-2026-06-20.png](screens/task1-03-1-2026-06-20.png)
+
+![task1-03-2026-06-20.png](screens/task1-03-2026-06-20.png)
+
+> поплыла кодировка
+---
+
+**5.** Внутри контейнера файл есть. Убедились благодаря сложному запросу с помощью одной строки:
+```bash
+kubectl exec \
+  $(kubectl get pods -l app=web-app -o jsonpath='{.items[0].metadata.name}') \
+  -c nginx -- ls /usr/share/nginx/html/
+```
+
+![task1-04-2026-06-20.png](screens/task1-04-2026-06-20.png)
+
 ---
 ## **Задание 2: Настройка HTTPS с Secrets**
 ### **Задача**
