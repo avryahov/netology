@@ -206,6 +206,132 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     - `ingress-tls.yaml`
 - Скриншот вывода `curl -k`
 
+### Ответ:
+
+Создал самоподписанный TLS-сертификат, упаковал его в Secret типа `kubernetes.io/tls` и настроил Ingress с TLS-терминацией.
+
+> **Важно про SAN:** Современный nginx-ingress отклоняет сертификаты без поля SAN (Subject Alternative Name) с ошибкой `x509: certificate relies on legacy Common Name field`. Поэтому в openssl добавлен флаг `-addext`.
+
+> **Важно про SNI:** Флаг `curl -H "Host:"` меняет только HTTP-заголовок, но НЕ меняет имя в TLS-рукопожатии (SNI). Nginx-ingress смотрит именно на SNI, чтобы выбрать нужный сертификат. Поэтому используем `--resolve`.
+
+> **Важно про NodeIP на macOS:** minikube с Docker driver не пробрасывает NodeIP (192.168.49.2) на хост. Используем `kubectl port-forward` на ingress-controller.
+
+**Манифест `src/task2/secret-tls.yaml`:**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-tls-secret
+  namespace: default
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64: cat tls.crt | base64 | tr -d '\n'>
+  tls.key: <base64: cat tls.key | base64 | tr -d '\n'>
+```
+
+**Манифест `src/task2/ingress-tls.yaml`:**
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress-tls
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - myapp.example.com
+      secretName: myapp-tls-secret
+  rules:
+    - host: myapp.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-app-svc
+                port:
+                  number: 80
+```
+
+---
+
+**1.** Включил Ingress addon:
+```bash
+minikube addons enable ingress
+kubectl get pods -n ingress-nginx
+```
+
+![task2-01-2026-06-20.png](screens/task2-01-2026-06-20.png)
+
+**2.** Сгенерировал самоподписанный сертификат с SAN:
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout tls.key \
+  -out tls.crt \
+  -subj "/CN=myapp.example.com/O=Netology" \
+  -addext "subjectAltName=DNS:myapp.example.com"
+```
+
+![task2-02-2026-06-20.png](screens/task2-02-2026-06-20.png)
+
+SAN прописан:
+```bash
+openssl x509 -in tls.crt -noout -text | grep -A2 "Subject Alternative"
+```
+
+![task2-03-2026-06-20.png](screens/task2-03-2026-06-20.png)
+
+**3.** Создал Secret, а затем применил его:
+```bash
+kubectl create secret tls myapp-tls-secret \
+  --cert=tls.crt \
+  --key=tls.key \
+  --dry-run=client -o yaml > secret-tls.yaml
+
+kubectl apply -f secret-tls.yaml
+kubectl get secret myapp-tls-secret
+```
+
+![task2-04-2026-06-20.png](screens/task2-04-2026-06-20.png)
+
+![task2-05-2026-06-20.png](screens/task2-05-2026-06-20.png)
+
+**4.** А теперь проверим Ingress:
+```bash
+kubectl apply -f ingress-tls.yaml
+kubectl get ingress myapp-ingress-tls
+kubectl describe ingress myapp-ingress-tls
+```
+
+![task2-06-2026-06-20.png](screens/task2-06-2026-06-20.png)
+
+**5.** HTTPS через port-forward:
+```bash
+kubectl port-forward -n ingress-nginx \
+  $(kubectl get pod -n ingress-nginx -l app.kubernetes.io/component=controller \
+    -o jsonpath='{.items[0].metadata.name}') 9443:443 &
+```
+
+![task2-07-2026-06-20.png](screens/task2-07-2026-06-20.png)
+
+и проверим живучесть:
+
+```bash
+curl -k --resolve "myapp.example.com:9443:127.0.0.1" \
+  https://myapp.example.com:9443/
+
+openssl s_client -connect localhost:9443 \
+  -servername myapp.example.com 2>&1 | grep "subject="
+```
+
+![task2-08-2026-06-20.png](screens/task2-08-2026-06-20.png)
+
 ---
 ## **Задание 3: Настройка RBAC**
 ### **Задача**
