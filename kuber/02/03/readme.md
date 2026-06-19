@@ -358,6 +358,120 @@ openssl x509 -req -in developer.csr -CA {CA серт вашего кластер
 - Команды генерации сертификатов
 - Скриншот проверки прав (`kubectl get pods --as=developer`)
 
+### Ответ:
+
+Создал пользователя `developer` через SSL-сертификат, подписанный CA кластера minikube. Назначил Role с доступом только к `pods` и `pods/log`. Проверил, что запрещённые операции возвращают Forbidden.
+
+> Как Kubernetes понимает, кто такой `developer`? Имя пользователя — это поле `CN` (Common Name) в SSL-сертификате. Когда `kubectl` делает запрос с этим сертификатом, кластер читает CN и ищет его в RoleBinding.
+
+**Манифест `src/task3/role-pod-reader.yaml`:**
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+    verbs:
+      - get
+      - list
+      - watch
+```
+
+**Манифест `src/task3/rolebinding-developer.yaml`:**
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-pod-reader
+  namespace: default
+subjects:
+  - kind: User
+    name: developer
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+---
+
+**1.** Создал ключ и CSR для пользователя:
+```bash
+openssl genrsa -out developer.key 2048
+
+openssl req -new -key developer.key-out developer.csr -subj "/CN=developer"
+```
+
+![task3-01-2026-06-20.png](screens/task3-01-2026-06-20.png)
+
+**2.** Далее пропишем CSR через CA кластера minikube:
+```bash
+openssl x509 -req \
+  -in developer.csr \
+  -CA ~/.minikube/ca.crt \
+  -CAkey ~/.minikube/ca.key \
+  -CAcreateserial \
+  -out developer.crt \
+  -days 365
+
+openssl x509 -in developer.crt -noout -subject
+```
+
+![task3-02-2026-06-20.png](screens/task3-02-2026-06-20.png)
+
+**3.** Затем идут Role и RoleBinding:
+```bash
+kubectl apply -f role-pod-reader.yaml
+kubectl apply -f rolebinding-developer.yaml
+kubectl describe role pod-reader
+```
+
+![task3-03-2026-06-20.png](screens/task3-03-2026-06-20.png)
+
+**4.** Зарегали пользователя в kubeconfig с помощью команд:
+```bash
+kubectl config set-credentials developer \
+  --client-certificate=developer.crt \
+  --client-key=developer.key
+
+kubectl config set-context developer-context \
+  --cluster=minikube \
+  --namespace=default \
+  --user=developer
+```
+
+![task3-04-2026-06-20.png](screens/task3-04-2026-06-20.png)
+
+Доверяем, но проверяем:
+```bash
+kubectl get pods --context=developer-context
+
+kubectl logs \
+  $(kubectl get pods -l app=web-app -o jsonpath='{.items[0].metadata.name}') \
+  -c nginx --context=developer-context | head -5
+```
+
+![task3-05-2026-06-20.png](screens/task3-05-2026-06-20.png)
+
+**5.** Все три операции дали `Forbidden` по следующим запрещенным командам:
+```bash
+kubectl get deployments --context=developer-context
+kubectl get secrets --context=developer-context
+kubectl delete pod \
+  $(kubectl get pods -l app=web-app -o jsonpath='{.items[0].metadata.name}') \
+  --context=developer-context
+```
+
+![task3-06-2026-06-20.png](screens/task3-06-2026-06-20.png)
+
 ---
 ## Шаблоны манифестов с учебными комментариями
 ### **1. Deployment с ConfigMap (nginx + multitool)**
