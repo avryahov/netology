@@ -1,0 +1,16 @@
+replicaCount: 1
+frontend:
+  image:
+    repository: nginx
+    tag: "1.27.5-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+backend:
+  image:
+    repository: wbitt/network-multitool
+    tag: "alpine-extra"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+resources: {}

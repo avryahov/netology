@@ -1,0 +1,6 @@
+frontend:
+  image:
+    tag: "1.25.5-alpine"
+backend:
+  image:
+    tag: "alpine-extra"
