@@ -1,3 +1,12 @@
 !/.idea/
 files/*.pub
 roles/*
+
+/clopro-homeworks/terraform/.terraform/
+/clopro-homeworks/terraform/*.tfstate
+/clopro-homeworks/terraform/*.tfstate.*
+/clopro-homeworks/terraform/*.tfplan
+/clopro-homeworks/terraform/terraform.tfvars
+
+/clopro-homeworks/terraform/kubeconfig*
+*.kubeconfig

@@ -1,0 +1,4 @@
+yc_cloud_id          = "b1gi5vqoettjdagma0o"
+yc_folder_id         = "b1g47or6p1bvo3u6ln48"
+ssh_public_key_path  = "~/.ssh/id_ed25519.pub"
+student_bucket_name  = "avrjakhov-20260819"
