@@ -11,7 +11,7 @@ output "private_vm_internal_ip" {
 }
 
 output "lamp_nlb_external_ip" {
-  value = [for l in yandex_lb_network_load_balancer.lamp_nlb.listener : l.external_address_spec[0].address][0]
+  value = [for l in yandex_lb_network_load_balancer.lamp_nlb.listener : one(l.external_address_spec).address][0]
 }
 
 output "bucket_picture_url" {
