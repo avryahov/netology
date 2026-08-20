@@ -30,7 +30,14 @@ resource "yandex_storage_bucket" "pictures" {
     list = false
   }
 
-  # 15.3: сюда добавляется server_side_encryption_configuration — см. 15.3/readme.md.
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        kms_master_key_id = yandex_kms_symmetric_key.clopro_key.id
+        sse_algorithm     = "aws:kms"
+      }
+    }
+  }
 }
 
 resource "yandex_storage_object" "picture" {

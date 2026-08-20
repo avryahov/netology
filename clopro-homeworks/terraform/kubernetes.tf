@@ -61,7 +61,7 @@ resource "yandex_kubernetes_cluster" "clopro_k8s" {
 resource "yandex_kubernetes_node_group" "clopro_nodes" {
   cluster_id = yandex_kubernetes_cluster.clopro_k8s.id
   name       = "clopro-nodes"
-  version    = "1.30"
+  version    = "1.32"
 
   instance_template {
     platform_id = "standard-v3"
