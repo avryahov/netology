@@ -18,6 +18,18 @@ resource "yandex_resourcemanager_folder_iam_member" "k8s_sa_images_puller" {
   member    = "serviceAccount:${yandex_iam_service_account.k8s_sa.id}"
 }
 
+resource "yandex_resourcemanager_folder_iam_member" "k8s_sa_clusters_agent" {
+  folder_id = var.yc_folder_id
+  role      = "k8s.clusters.agent"
+  member    = "serviceAccount:${yandex_iam_service_account.k8s_sa.id}"
+}
+
+resource "yandex_resourcemanager_folder_iam_member" "k8s_sa_vpc_public_admin" {
+  folder_id = var.yc_folder_id
+  role      = "vpc.publicAdmin"
+  member    = "serviceAccount:${yandex_iam_service_account.k8s_sa.id}"
+}
+
 resource "yandex_kubernetes_cluster" "clopro_k8s" {
   name        = "clopro-k8s"
   description = "Региональный кластер K8s для домашних заданий блока 15"
@@ -56,12 +68,18 @@ resource "yandex_kubernetes_cluster" "clopro_k8s" {
   }
 
   release_channel = "STABLE"
+
+  depends_on = [
+    yandex_resourcemanager_folder_iam_member.k8s_sa_editor,
+    yandex_resourcemanager_folder_iam_member.k8s_sa_images_puller,
+    yandex_resourcemanager_folder_iam_member.k8s_sa_clusters_agent,
+    yandex_resourcemanager_folder_iam_member.k8s_sa_vpc_public_admin,
+  ]
 }
 
 resource "yandex_kubernetes_node_group" "clopro_nodes" {
   cluster_id = yandex_kubernetes_cluster.clopro_k8s.id
   name       = "clopro-nodes"
-  version    = "1.32"
 
   instance_template {
     platform_id = "standard-v3"

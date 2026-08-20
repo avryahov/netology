@@ -3,7 +3,7 @@
 #
 # resource_preset_id подобран под требование задания «платформа Intel Broadwell,
 # производительность 50% CPU» — перед apply проверьте актуальное имя пресета командой
-# `yc mdb mysql resource-preset list` (см. Шаг в 15.4/readme.md) и поправьте здесь при
+# `yc managed-mysql resource-preset list` (см. Шаг в 15.4/readme.md) и поправьте здесь при
 # расхождении.
 
 resource "yandex_mdb_mysql_cluster" "clopro_mysql" {
