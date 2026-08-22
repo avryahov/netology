@@ -1,0 +1,75 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-sc
+# Нет автоматического развёртывания томов — PV создаётся вручную
+provisioner: kubernetes.io/no-provisioner
+# Привязка PVC к PV откладывается до появления пода-потребителя
+volumeBindingMode: WaitForFirstConsumer
+---
+# PV под нашим StorageClass. При no-provisioner том не создаётся автоматически,
+# поэтому статический PV объявляем сами, иначе PVC останется в Pending.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-sc-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-sc
+  hostPath:
+    path: /mnt/sc-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-sc-pvc
+spec:
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-sc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-exchange-sc
+  labels:
+    app: data-exchange-sc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-exchange-sc
+  template:
+    metadata:
+      labels:
+        app: data-exchange-sc
+    spec:
+      containers:
+      - name: busybox
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args: ["while true; do echo $(date) >> /shared/date.log; sleep 5; done"]
+        volumeMounts:
+        - name: sc-storage
+          mountPath: /shared
+      - name: multitool
+        image: wbitt/network-multitool
+        command: ["/bin/sh", "-c"]
+        args: ["tail -f /shared/date.log"]
+        volumeMounts:
+        - name: sc-storage
+          mountPath: /shared
+      volumes:
+      - name: sc-storage
+        persistentVolumeClaim:
+          claimName: local-sc-pvc
